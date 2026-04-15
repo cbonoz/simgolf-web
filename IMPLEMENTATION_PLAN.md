@@ -4,7 +4,7 @@
 
 Sid Meier's SimGolf (2002) is a golf course management sim with three intertwined loops:
 
-1. **Build** — Design holes on a grid (tee → fairway → green, with hazards & terrain)
+1. **Build** — Design holes on an isometric grid (tee → fairway → green, with hazards & terrain)
 2. **Watch** — AI golfers play your course, generating revenue & reputation
 3. **Improve** — Spend revenue on upgrades, new holes, facilities, landscaping
 
@@ -14,13 +14,13 @@ Sid Meier's SimGolf (2002) is a golf course management sim with three intertwine
 
 ## MVP Scope (6-8 weeks, solo)
 
-The MVP strips SimGolf to its **core loop**: build a 9-hole course, watch golfers play, earn money, improve. No story mode, no deep sim, but the *feel* should be there.
+The MVP strips SimGolf to its **core loop**: build a 9-hole course, watch golfers play, earn money, improve. No story mode, no deep sim, but the *feel* should be there — especially the isometric charm.
 
 ### What's IN
 
 | Feature | Notes |
 |---------|-------|
-| Grid-based course builder | 40×30 tile grid, paint terrain |
+| Isometric grid-based course builder | Diamond tile grid, Phaser isometric tilemap |
 | 6 terrain types | Fairway, Rough, Sand, Water, Trees, Green |
 | Tee + Hole (cup) placement | 1 tee + 1 cup per hole, 9 holes |
 | AI golfer pathing | Simple stroke simulation with error |
@@ -29,16 +29,16 @@ The MVP strips SimGolf to its **core loop**: build a 9-hole course, watch golfer
 | Day/night cycle | Accelerated — 1 day ≈ 30s real time |
 | Basic economy | Money in → spend on terrain purchases |
 | Undo/redo | Builder QoL |
+| Speed controls | 1x, 2x, 5x |
 
 ### What's OUT (future phases)
 
 - Full resort management (hotel, pro shop, memberships)
-- Terrain editing tools (raise/lower elevation)
+- Elevation / terrain height editing
 - Weather system
 - Multiplayer / leaderboards
-- Sound & music
+- Rich sound & music
 - Mobile-responsive (desktop-first)
-- Save/load (use localStorage for MVP)
 - Tournaments & events
 
 ---
@@ -47,36 +47,43 @@ The MVP strips SimGolf to its **core loop**: build a 9-hole course, watch golfer
 
 ```
 simgolf-web/
-├── index.html              # Entry point
+├── index.html                  # Entry point
 ├── package.json
 ├── vite.config.ts
-├── src/
-│   ├── main.ts             # Bootstrapper, game loop
-│   ├── state/
-│   │   ├── store.ts        # Zustand store (single source of truth)
-│   │   ├── course.ts        # Course state, tile grid
-│   │   ├── economy.ts       # Money, revenue, expenses
-│   │   └── golfers.ts       # Active golfer AI state
-│   ├── engine/
-│   │   ├── renderer.ts      # Canvas rendering (2D)
-│   │   ├── input.ts         # Mouse/touch → tile coordinates
-│   │   ├── pathfinding.ts   # Golfer stroke simulation
-│   │   └── tick.ts          # Game day cycle, golfer spawning
-│   ├── builder/
-│   │   ├── Brush.ts         # Terrain painting tool
-│   │   ├── HoleConfig.ts    # Tee + cup placement
-│   │   └── UndoStack.ts     # Undo/redo history
-│   ├── sim/
-│   │   ├── Golfer.ts        # AI golfer entity
-│   │   ├── Swing.ts         # Stroke simulation (power + error)
-│   │   └── Scoring.ts       # Scorecard tracking
-│   ├── ui/
-│   │   ├── Toolbar.tsx       # Terrain palette, tools
-│   │   ├── Scorecard.tsx     # Per-hole scores
-│   │   ├── FinanceBar.tsx    # Money display
-│   │   └── DayIndicator.tsx  # Day/time display
+├── public/
 │   └── assets/
-│       └── tiles.ts          # Procedural tile sprites (no images needed)
+│       └── tilesprites.ts       # Procedurally generated tile sprites (Phaser textures)
+├── src/
+│   ├── main.ts                 # Phaser game config + boot
+│   ├── scenes/
+│   │   ├── BootScene.ts        # Asset generation, procedural sprites
+│   │   ├── BuilderScene.ts     # Course design mode (paint, hole config)
+│   │   ├── PlayScene.ts        # Golfers playing, day cycle, revenue
+│   │   ├── DaySummaryScene.ts  # End-of-day overlay
+│   │   └── TitleScene.ts       # Start screen
+│   ├── state/
+│   │   ├── store.ts            # Zustand store (economy, reputation, settings)
+│   │   ├── course.ts           # Course state, tile data model
+│   │   └── golfers.ts          # Active golfer AI state
+│   ├── systems/
+│   │   ├── IsoTransform.ts     # Screen ↔ tile coordinate conversion
+│   │   ├── StrokeSim.ts        # Swing power + error calculation
+│   │   ├── TerrainEffects.ts   # Terrain → ball behavior mapping
+│   │   ├── DayCycle.ts         # Time progression, golfer spawning
+│   │   └── Economy.ts          # Revenue, expenses, reputation calc
+│   ├── entities/
+│   │   ├── Golfer.ts           # Phaser sprite + AI state
+│   │   ├── Ball.ts             # Ball flight + terrain interaction
+│   │   └── TileCursor.ts       # Builder hover highlight
+│   ├── ui/
+│   │   ├── Toolbar.ts          # Terrain palette, tool selection (HTML overlay)
+│   │   ├── Scorecard.ts        # Per-hole scores (HTML overlay)
+│   │   ├── FinanceBar.ts       # Money + reputation display (HTML overlay)
+│   │   ├── DayIndicator.ts     # Day/time display (HTML overlay)
+│   │   └── SpeedControls.ts    # 1x, 2x, 5x buttons (HTML overlay)
+│   └── utils/
+│       ├── constants.ts         # Grid size, tile dims, speeds
+│       └── helpers.ts           # Math utilities
 └── tests/
     └── ...
 ```
@@ -85,17 +92,17 @@ simgolf-web/
 
 | Choice | Why |
 |--------|-----|
-| **Vite + TypeScript** | Fast dev, strict types catch sim bugs |
-| **HTML5 Canvas** | 2D grid game — no need for WebGL/Three.js |
-| **Zustand** | Lightweight state, great for game state |
-| **No framework for UI** | Minimal UI — plain HTML/CSS overlays on canvas |
-| **No external assets** | Procedural tile colors/patterns, ship zero images |
+| **Vite + TypeScript** | Fast dev server, strict types catch sim bugs |
+| **Phaser 3** | Isometric tilemap support, sprites, scene management, camera, input — handles the hard parts of isometric rendering |
+| **Zustand** | Economy + game state that Phaser doesn't own. Lightweight, no boilerplate |
+| **No React** | Phaser owns the canvas. Minimal UI is plain HTML/CSS overlays positioned over the game. No virtual dom overhead for what's essentially a few HUD elements |
+| **No external sprite sheets** | Procedural texture generation in BootScene (draw tiles to Phaser text objects). Ship zero image assets |
 
 ---
 
 ## Core Systems — Design
 
-### 1. Grid & Terrain
+### 1. Isometric Grid & Terrain
 
 ```
 Tile = {
@@ -106,30 +113,54 @@ Tile = {
 }
 ```
 
-- Grid is `40×30` (1200 tiles). Each tile is ~20px on screen.
-- Terrain affects golfer ball physics:
-  - Fairway: full distance
-  - Rough: 50% distance
-  - Sand: 30% distance
-  - Water: penalty stroke, reset to previous position
-  - Trees: ball stops, random deflection next swing
-  - Green: puts ball near cup
+- Grid is `40×30` (1200 tiles) displayed as isometric diamond grid
+- Tile size: `64×32` (standard isometric diamond: width = 2× height)
+- Total canvas footprint: ~2560×960 before camera/zoom
 
-### 2. Course Builder
+**Isometric coordinate transform** (IsoTransform):
+```
+// Tile (col, row) → Screen (x, y)
+screenX = (col - row) * (TILE_WIDTH / 2) + offsetX
+screenY = (col + row) * (TILE_HEIGHT / 2) + offsetY
+
+// Screen (x, y) → Tile (col, row) — for input
+col = (screenX / (TILE_WIDTH / 2) + screenY / (TILE_HEIGHT / 2)) / 2
+row = (screenY / (TILE_HEIGHT / 2) - screenX / (TILE_WIDTH / 2)) / 2
+```
+
+**Depth sorting:** Phaser 3.60+ supports `depthSort` on isometric tilemaps. For sprites (golfers, ball), set `depth = y + x` for correct visual overlap.
+
+**Terrain effects on ball:**
+| Terrain | Effect |
+|---------|--------|
+| Fairway | Full distance |
+| Rough | 50% distance |
+| Sand | 30% distance |
+| Water | Penalty stroke, reset to previous position |
+| Trees | Ball stops, random deflection next swing |
+| Green | Puts ball near cup, enables putting |
+
+### 2. Course Builder (BuilderScene)
 
 **Two modes:**
-- **Paint mode** — Select terrain type, click/drag to paint tiles
+- **Paint mode** — Select terrain type, click/drag to paint tiles isometrically
 - **Hole mode** — Place tee and cup for each of 9 holes
+
+**Builder UX:**
+- IsoTransform converts mouse clicks to tile coordinates
+- TileCursor sprite shows hover position (translucent diamond)
+- Drag painting: flood-fill drag with selected terrain
+- Right-click or ctrl-Z to undo
 
 **Validation rules:**
 - Each hole must have exactly 1 tee and 1 cup
 - Tee and cup must be on fairway or green tiles
-- Holes must not overlap paths (optional for MVP)
-- Water can't be placed on tee/cup
+- Water can't be placed on tee/cup positions
+- Par auto-calculated from tee-to-cup distance
 
-**Undo:** Store grid snapshots (diff-based for perf if needed later).
+**Undo:** Store tile diffs in a stack (only changed tiles per action).
 
-### 3. AI Golfer Simulation
+### 3. AI Golfer Simulation (PlayScene)
 
 This is the soul of the game. Golfers should be *believable*, not perfect.
 
@@ -138,18 +169,19 @@ Golfer = {
   id: number
   skill: 0.3 - 0.9          // 0.9 = scratch, 0.3 = hack
   currentHole: 1-9
-  position: {x, y}
+  tilePos: {col, row}
   strokes: number
   state: 'walking' | 'addressing' | 'swinging' | 'ball_flight' | 'reacting'
+  sprite: Phaser.GameObjects.Sprite
 }
 ```
 
 **Stroke simulation:**
-1. Calculate ideal direction toward cup
-2. Add random error scaled by `(1 - skill)`
+1. Calculate ideal direction toward cup (isometric tile path)
+2. Add random error scaled by `(1 - skill)` — bad golfers swing wild
 3. Calculate distance based on club selection (auto for MVP)
 4. Ball travels along vector, modified by terrain on landing
-5. If ball lands in water → penalty + replay
+5. If ball lands in water → penalty + replay (with splash animation)
 6. If ball on green and within `skill * 3` tiles of cup → putt goes in
 7. Max strokes per hole = 10 (pick up)
 
@@ -158,7 +190,11 @@ Golfer = {
 ADDRESS (0.5s) → SWING (0.5s) → BALL_FLIGHT (0.5s) → REACT (0.3s) → next stroke or next hole
 ```
 
+**Isometric movement:** Golfers walk tile-to-tile using iso pathfinding. Ball flight interpolates between screen-space positions with a parabolic arc (height = distance * 0.3).
+
 **Spawning:** 1-3 golfers tee off every ~5s game time. Max 12 on course.
+
+**Depth sorting:** Each golfer sprite's depth = `(tilePos.col + tilePos.row)` so they render behind/in-front of terrain correctly.
 
 ### 4. Economy
 
@@ -178,7 +214,7 @@ Starting money: $5000
 
 **Reputation** = average of last 10 golfers' satisfaction:
 - Under par → +2 rep
-- Par → +1 rep  
+- Par → +1 rep
 - Bogey → 0 rep
 - Double bogey+ → -1 rep
 - Hit water/trees → -1 rep each
@@ -188,100 +224,150 @@ Reputation 1-5 stars → multiplies green fees.
 ### 5. Game Loop & Day Cycle
 
 ```
-1 real second = 1 game minute
-1 game day = 6 real minutes (can add speed toggle later)
+1 real second = 1 game minute (at 1x speed)
+1 game day = 6 real minutes at 1x
+Speed: 1x, 2x, 5x (Phaser timeScale)
 ```
 
 **Day phases:**
 - 6:00-10:00 — Golfers arrive, tee off in groups
 - 10:00-18:00 — Peak play, max golfers on course
 - 18:00-20:00 — Winding down, last groups finishing
-- 20:00-6:00 — Night → day summary, revenue collection
+- 20:00-6:00 — Night → DaySummaryScene
 
-**Day summary screen:**
+**Day summary:**
 - Golfers served, revenue, expenses, profit
 - Reputation change
 - Available funds
+- "Continue" → back to builder or next day
+
+### 6. Scene Flow
+
+```
+TitleScene → BuilderScene (initial course design)
+                ↓ [player presses "Open for Play"]
+            PlayScene (golfers arrive, day runs)
+                ↓ [day ends]
+         DaySummaryScene (revenue report)
+                ↓ [continue]
+            BuilderScene (improve course)
+                ↓ [open again]
+            PlayScene ... (loop)
+```
+
+Phaser scenes make this flow clean — each scene owns its own update loop and rendering, and we pass data via Zustand store.
+
+---
+
+## Visual Style
+
+**Isometric SimGolf aesthetic** — colorful, readable, charming.
+
+### Tile Rendering (Procedural)
+
+All textures generated in BootScene using Phaser's `Graphics` → `generateTexture()`:
+
+| Tile | Visual |
+|------|--------|
+| **Fairway** | Striped green (alternating horizontal bands) |
+| **Rough** | Muted olive green, textured |
+| **Sand** | Tan/beige with stipple dots |
+| **Water** | Blue with animated wave lines |
+| **Trees** | Dark green triangle on trunk (isometric) |
+| **Green** | Smooth bright green with subtle grain |
+| **Tee marker** | White square on fairway |
+| **Cup + flag** | Black circle with red triangle flag |
+
+### Golfers
+
+- Small isometric sprites (colored dots/ovals): red, blue, yellow, green, orange
+- Brief white trail on ball flight
+- "Splash" particle burst on water hazard
+- Exaggerated celebration/frustration animations (scale bounce)
+
+### Camera
+
+- Pan: drag to scroll (isometric world is larger than viewport)
+- Zoom: scroll wheel (0.5x – 2x)
+- Bounds: clamp to course grid edges
 
 ---
 
 ## Milestone Breakdown
 
-### M1: Grid & Rendering (Week 1-2)
-- [ ] Canvas setup, grid rendering with tile colors
-- [ ] Terrain type enum + tile map
-- [ ] Mouse input → tile coordinates
-- [ ] Paint brush tool (click/drag to change terrain)
-- [ ] Terrain palette UI (sidebar)
-- [ ] Basic camera (pan, zoom)
-- [ ] Save grid state to localStorage
+### M1: Iso Grid & Rendering (Week 1-2)
+- [ ] Phaser 3 + Vite + TypeScript project scaffold
+- [ ] BootScene: generate procedural tile textures
+- [ ] Isometric tilemap: 40×30 diamond grid rendering
+- [ ] IsoTransform: screen ↔ tile coordinate conversion
+- [ ] Camera: pan (drag) + zoom (scroll)
+- [ ] Depth sorting for isometric tiles
+- [ ] Mouse input → iso tile coordinates
+- [ ] TileCursor: hover highlight sprite
+- [ ] Zustand store: course tile state
 
-### M2: Hole Design (Week 2-3)
+### M2: Course Builder (Week 2-3)
+- [ ] Paint mode: terrain brush (click/drag to paint)
+- [ ] Terrain palette UI (HTML overlay sidebar)
 - [ ] Hole mode: place tee + cup for 9 holes
-- [ ] Hole numbering + color coding
-- [ ] Validation: enforce tee/cup rules
-- [ ] Show hole paths (tee → cup line)
-- [ ] Undo/redo for builder
+- [ ] Hole numbering + color coding on tiles
+- [ ] Validation: enforce tee/cup placement rules
+- [ ] Auto-par calculation from tee-to-cup distance
+- [ ] Undo/redo for builder (tile diff stack)
+- [ ] Save/load course to localStorage
 
 ### M3: Golfer AI (Week 3-5) — *the hard part*
-- [ ] Golfer entity (position, state, skill)
-- [ ] Stroke simulation (direction + distance + error)
-- [ ] Ball flight animation (arc interpolation)
-- [ ] Terrain interaction on landing
-- [ ] Putt detection and hole completion
+- [ ] Golfer entity: Phaser sprite + Zustand state
+- [ ] Stroke simulation: direction + distance + skill-based error
+- [ ] Ball flight animation (isometric arc interpolation)
+- [ ] Terrain interaction on landing (effects per type)
+- [ ] Water hazard: splash animation + penalty
+- [ ] Green/putting: proximity check, hole completion
 - [ ] Max stroke limit (10 per hole)
-- [ ] Transition between holes (9-hole round)
-- [ ] Spawner: schedule golfers throughout day
+- [ ] Hole-to-hole transition for 9-hole round
+- [ ] Golfer spawner: schedule groups throughout day
+- [ ] Depth sorting for golfer vs. terrain sprites
 
 ### M4: Economy & Day Cycle (Week 5-6)
-- [ ] Money tracking (Zustand store)
-- [ ] Terrain costs (can't paint without funds)
+- [ ] Zustand economy store (money, revenue, expenses)
+- [ ] Terrain costs (can't paint without funds in builder)
 - [ ] Revenue from green fees per completed round
-- [ ] Day/night cycle with time acceleration
-- [ ] Day summary overlay (revenue, expenses, profit)
-- [ ] Starting money + initial terrain budget
+- [ ] Reputation calculation (rolling average)
+- [ ] Day/night cycle with Phaser timeScale
+- [ ] DaySummaryScene: revenue, expenses, profit overlay
+- [ ] Speed controls UI (1x, 2x, 5x)
+- [ ] Starting money: $5000
 
 ### M5: Polish & Juice (Week 6-8)
-- [ ] Scorecard UI (strokes per hole, par)
-- [ ] Finance bar overlay
-- [ ] Golfer reaction animations (celebration, frustration)
-- [ ] Sound effects (just a few — club swing, ball splash, crowd)
-- [ ] Speed controls (1x, 2x, 5x)
-- [ ] Intro screen + "start round" button
+- [ ] Scorecard UI (strokes per hole, par comparison)
+- [ ] Finance bar overlay (money + stars)
+- [ ] Golfer reaction animations (celebration, frustration, splash)
+- [ ] Sound effects (club swing, ball splash, hole-in-one, crowd cheer)
+- [ ] TitleScene: game intro + "New Course" button
+- [ ] Scene transitions (Phaser camera fades)
+- [ ] localStorage persistence (course + money + day count)
 - [ ] Deploy to GitHub Pages
 
 ---
 
-## Visual Style (MVP)
+## Key Risk: Isometric Depth & Input
 
-Keep it **simple and readable**. No pixel art needed.
+Isometric games have two notorious pitfalls:
 
-- **Grid:** Light green background, darker grid lines
-- **Fairway:** Striped green (alternating horizontal bands)
-- **Rough:** Muted olive green
-- **Sand:** Tan/beige
-- **Water:** Blue with subtle wave pattern
-- **Trees:** Dark green circles
-- **Green:** Smooth bright green circle around cup
-- **Tee:** White square marker
-- **Cup:** Black circle with flag
-- **Golfers:** Colored dots (red, blue, yellow) moving on course
-- **Ball:** Small white circle with brief trail on flight
+1. **Depth sorting** — Sprites must be drawn back-to-front. In isometric, "back" = top-right. Phaser 3.60+ handles this for tilemaps, but we need to manually sort golfer/ball sprites by `(col + row)`. Getting this wrong = golfers floating behind trees they should be in front of. **Test early with multiple moving sprites.**
 
-All procedural — no sprite sheets, no image assets. Canvas primitives only.
+2. **Click detection** — Converting screen coordinates to isometric tile coordinates is non-trivial. IsoTransform needs to account for camera pan + zoom. **Test with zoom and pan from day 1.**
 
----
-
-## Key Risk: Golfer AI Feel
+### Key Risk: Golfer AI Feel
 
 The #1 thing that makes SimGolf fun is **watching golfers struggle**. If the AI is too perfect or too random, the game is boring.
 
 **Tuning tips:**
-- Skill distribution should be a bell curve centered around 0.5 (most golfers are mediocre)
-- Bad swings should be *slightly* biased toward obstacles (more fun to watch)
-- Ball-in-water should trigger a visible "splash" and the golfer should visibly react
-- Skip 2-3 seconds between strokes so the player can follow the action
-- Show a brief "thought bubble" before each swing (adds personality)
+- Skill distribution: bell curve centered around 0.5 (most golfers are mediocre)
+- Bad swings slightly **biased toward obstacles** (more fun to watch)
+- Ball-in-water → visible splash + golfer frustration animation
+- 2-3 seconds between strokes so the player can follow action
+- Brief "thought bubble" before each swing (adds personality)
 
 **Test early with exaggerated bad swings** — tune down once it feels entertaining.
 
@@ -290,14 +376,19 @@ The #1 thing that makes SimGolf fun is **watching golfers struggle**. If the AI 
 ## Quick Start (Day 1)
 
 ```bash
+# Setup
 npm create vite@latest simgolf-web -- --template vanilla-ts
 cd simgolf-web
-npm install zustand
+npm install phaser zustand
+npm install -D @types/phaser
+
 # Start building M1
+npm run dev
 ```
 
-Prototype the grid + terrain painting first. Get something on screen within the first session. The golfer AI can wait — there's no game without a course to play on.
+First milestone: get an isometric grid rendering with mouse-to-tile coordinate detection. The rest builds on that foundation.
 
 ---
 
-*Plan saved 2026-04-14. Repo: github.com/cbonoz/simgolf-web*
+*Updated 2026-04-14. Repo: github.com/cbonoz/simgolf-web*
+*Framework: Phaser 3 + TypeScript + Vite + Zustand*
