@@ -1,21 +1,20 @@
 import * as Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT, TERRAIN_COLORS, TerrainType, TERRAIN_TYPES } from '../utils/constants';
 
-/**
- * BootScene: Generates all procedural tile textures and then transitions to TitleScene.
- */
 export class BootScene extends Phaser.Scene {
   constructor() {
     super({ key: 'BootScene' });
   }
 
   preload(): void {
-    // No external assets — everything is generated procedurally
+    // No external assets
   }
 
   create(): void {
+    console.log('[Boot] Generating textures...');
     this.generateTileTextures();
     this.generateEntityTextures();
+    console.log('[Boot] Textures generated, starting TitleScene');
     this.scene.start('TitleScene');
   }
 
@@ -33,10 +32,10 @@ export class BootScene extends Phaser.Scene {
     // Fill diamond shape
     g.fillStyle(color, 1);
     g.beginPath();
-    g.moveTo(w / 2, 0);      // top
-    g.lineTo(w, h / 2);       // right
-    g.lineTo(w / 2, h);       // bottom
-    g.lineTo(0, h / 2);       // left
+    g.moveTo(w / 2, 0);
+    g.lineTo(w, h / 2);
+    g.lineTo(w / 2, h);
+    g.lineTo(0, h / 2);
     g.closePath();
     g.fillPath();
 
@@ -67,7 +66,6 @@ export class BootScene extends Phaser.Scene {
 
     switch (type) {
       case 'fairway':
-        // Horizontal stripes (mowed fairway look)
         g.lineStyle(1, 0x3d7a33, 0.3);
         g.beginPath();
         g.moveTo(6, cy - 4);
@@ -78,24 +76,18 @@ export class BootScene extends Phaser.Scene {
         g.lineTo(w - 6, cy + 4);
         g.strokePath();
         break;
-
       case 'green':
-        // Smooth, slightly brighter spot
         g.fillStyle(0x68cc68, 0.3);
         g.fillCircle(cx, cy, 6);
         break;
-
       case 'sand':
-        // Stipple dots
         g.fillStyle(0xc4a55a, 0.6);
         const sandOffsets = [[-8, -2], [-3, 3], [2, -1], [7, 2], [5, -3]];
         for (const [dx, dy] of sandOffsets) {
           g.fillCircle(cx + dx, cy + dy, 1);
         }
         break;
-
       case 'water':
-        // Simple wave line
         g.lineStyle(1, 0x6ba3e8, 0.5);
         g.beginPath();
         g.moveTo(8, cy - 2);
@@ -104,17 +96,13 @@ export class BootScene extends Phaser.Scene {
         g.lineTo(w - 8, cy);
         g.strokePath();
         break;
-
       case 'trees':
-        // Small tree icon (triangle on stick)
         g.fillStyle(0x1a4a15, 0.8);
         g.fillTriangle(cx, cy - 6, cx - 5, cy + 2, cx + 5, cy + 2);
         g.fillStyle(0x5c3a1a, 0.8);
         g.fillRect(cx - 1, cy + 2, 2, 4);
         break;
-
       case 'rough':
-        // A couple of small marks
         g.fillStyle(0x5a6b2e, 0.4);
         g.fillRect(cx - 4, cy - 2, 2, 4);
         g.fillRect(cx + 3, cy, 2, 3);
@@ -123,7 +111,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   private generateEntityTextures(): void {
-    // Golfer (small colored circle)
+    // Golfer (small colored circles)
     const golferColors = [0xe74c3c, 0x3498db, 0xf1c40f, 0x2ecc71, 0xe67e22];
     golferColors.forEach((color, i) => {
       const g = this.add.graphics();
@@ -144,7 +132,7 @@ export class BootScene extends Phaser.Scene {
     ballG.generateTexture('ball', 8, 8);
     ballG.destroy();
 
-    // Tee marker (white diamond)
+    // Tee marker
     const teeG = this.add.graphics();
     teeG.fillStyle(0xffffff, 0.8);
     teeG.beginPath();
@@ -157,18 +145,16 @@ export class BootScene extends Phaser.Scene {
     teeG.generateTexture('tee_marker', 12, 12);
     teeG.destroy();
 
-    // Cup flag
+    // Flag
     const flagG = this.add.graphics();
-    // Pole
     flagG.fillStyle(0x888888, 1);
     flagG.fillRect(5, 4, 2, 16);
-    // Flag
     flagG.fillStyle(0xe74c3c, 1);
     flagG.fillTriangle(7, 4, 7, 12, 16, 8);
     flagG.generateTexture('flag', 18, 20);
     flagG.destroy();
 
-    // Cursor highlight (translucent diamond)
+    // Cursor highlight
     const cursorG = this.add.graphics();
     cursorG.fillStyle(0xffff00, 0.2);
     cursorG.lineStyle(2, 0xffff00, 0.8);

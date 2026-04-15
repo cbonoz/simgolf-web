@@ -1,9 +1,9 @@
-import { create } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import { GRID_COLS, GRID_ROWS, TerrainType } from '../utils/constants';
 
 export interface Tile {
   type: TerrainType;
-  hole: number | null; // which hole (1-9), or null
+  hole: number | null;
   isTee: boolean;
   isCup: boolean;
 }
@@ -19,13 +19,11 @@ export interface CourseState {
   grid: Tile[][];
   holes: HoleConfig[];
   money: number;
-
-  // Actions
   setTile: (col: number, row: number, type: TerrainType) => void;
   setTee: (holeId: number, col: number, row: number) => void;
   setCup: (holeId: number, col: number, row: number) => void;
   addMoney: (amount: number) => void;
-  spendMoney: (amount: number) => boolean; // returns false if not enough
+  spendMoney: (amount: number) => boolean;
   getTile: (col: number, row: number) => Tile;
   resetCourse: () => void;
 }
@@ -55,7 +53,7 @@ function createDefaultHoles(): HoleConfig[] {
   }));
 }
 
-export const useCourseStore = create<CourseState>((set, get) => ({
+export const courseStore = createStore<CourseState>()((set, get) => ({
   grid: createEmptyGrid(),
   holes: createDefaultHoles(),
   money: 5000,
@@ -73,7 +71,6 @@ export const useCourseStore = create<CourseState>((set, get) => ({
         h.id === holeId ? { ...h, tee: { col, row } } : h
       );
       const grid = state.grid.map((r) => [...r]);
-      // Clear previous tee for this hole
       for (let r = 0; r < GRID_ROWS; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
           if (grid[r][c].isTee && grid[r][c].hole === holeId) {
@@ -91,7 +88,6 @@ export const useCourseStore = create<CourseState>((set, get) => ({
         h.id === holeId ? { ...h, cup: { col, row } } : h
       );
       const grid = state.grid.map((r) => [...r]);
-      // Clear previous cup for this hole
       for (let r = 0; r < GRID_ROWS; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
           if (grid[r][c].isCup && grid[r][c].hole === holeId) {
