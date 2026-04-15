@@ -9,15 +9,15 @@ export class BuilderScene extends Phaser.Scene {
   private debugText!: Phaser.GameObjects.Text;
   private selectedTerrain: TerrainType = 'fairway';
   private isPainting = false;
+  private isPanning = false;
   private lastPaintedTile: string = '';
+  private panStart: { x: number; y: number } = { x: 0, y: 0 };
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private terrainPalette!: HTMLDivElement;
   private moneyDisplay!: HTMLDivElement;
   private helpText!: HTMLDivElement;
 
-  // Grid offset: positions the diamond grid so all tiles have positive coords
-  // Leftmost point is tile(0, ROWS-1): x = (0-(ROWS-1)) * (TILE_W/2)
-  // We offset so leftmost is at x=100
+  // Grid offset so all tiles are in positive world space
   private readonly OFFSET_X = (GRID_ROWS - 1) * (TILE_WIDTH / 2) + 100;
   private readonly OFFSET_Y = 100;
 
@@ -26,25 +26,18 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Calculate grid extents
+    // Center camera on the grid
     const topLeft = this.tileToWorld(0, 0);
-    const topRight = this.tileToWorld(GRID_COLS - 1, 0);
-    const bottomLeft = this.tileToWorld(0, GRID_ROWS - 1);
     const bottomRight = this.tileToWorld(GRID_COLS - 1, GRID_ROWS - 1);
+    const gridCenterX = (topLeft.x + bottomRight.x) / 2;
+    const gridCenterY = (topLeft.y + bottomRight.y) / 2;
 
-    const gridCenterX = (topLeft.x + topRight.x + bottomLeft.x + bottomRight.x) / 4;
-    const gridCenterY = (topLeft.y + topRight.y + bottomLeft.y + bottomRight.y) / 4;
-
-    console.log('[Builder] Grid center:', gridCenterX, gridCenterY);
-    console.log('[Builder] Corners:', { topLeft, topRight, bottomLeft, bottomRight });
-
-    // Set camera scroll to center the grid
     const cam = this.cameras.main;
     cam.scrollX = gridCenterX - cam.width / 2;
     cam.scrollY = gridCenterY - cam.height / 2;
 
-    console.log('[Builder] Camera scroll:', cam.scrollX, cam.scrollY);
-    console.log('[Builder] Camera size:', cam.width, cam.height);
+    // Prevent right-click context menu so we can use right-drag for panning
+    this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // Create tile sprites
     this.createGrid();
@@ -55,7 +48,7 @@ export class BuilderScene extends Phaser.Scene {
     this.cursor.setDepth(9999);
     this.cursor.setVisible(false);
 
-    // Debug text
+    // Debug text (fixed to screen)
     this.debugText = this.add.text(10, 10, '', {
       fontSize: '12px',
       color: '#ffff00',
@@ -95,10 +88,6 @@ export class BuilderScene extends Phaser.Scene {
         this.tileSprites[row][col] = sprite;
       }
     }
-
-    // Log a sample tile position to verify
-    console.log('[Builder] Tile (0,0) at:', this.tileToWorld(0, 0));
-    console.log('[Builder] Tile (20,15) at:', this.tileToWorld(20, 15));
   }
 
   private refreshGrid(): void {
@@ -115,19 +104,41 @@ export class BuilderScene extends Phaser.Scene {
   private setupInput(): void {
     const cam = this.cameras.main;
 
+    // --- Panning (right-click + drag, or middle-click + drag) ---
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown()) {
+        // Start panning
+        this.isPanning = true;
+        this.panStart = { x: pointer.x, y: pointer.y };
+        return; // Don't paint when panning
+      }
+      // Left click: start painting
+      this.isPainting = true;
+      this.lastPaintedTile = '';
+      const tile = this.worldToTile(pointer.worldX, pointer.worldY);
+      this.paintTile(tile.col, tile.row);
+    });
+
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      // Convert pointer screen position to world position accounting for camera
+      // Panning with right button held
+      if (this.isPanning) {
+        const dx = pointer.x - this.panStart.x;
+        const dy = pointer.y - this.panStart.y;
+        cam.scrollX -= dx / cam.zoom;
+        cam.scrollY -= dy / cam.zoom;
+        this.panStart = { x: pointer.x, y: pointer.y };
+        this.cursor.setVisible(false);
+        return;
+      }
+
+      // Update cursor position
       const worldX = pointer.worldX;
       const worldY = pointer.worldY;
-
       const tile = this.worldToTile(worldX, worldY);
 
-      // Update debug text
       this.debugText.setText(
-        `Screen: ${pointer.x.toFixed(0)},${pointer.y.toFixed(0)}\n` +
-        `World: ${worldX.toFixed(0)},${worldY.toFixed(0)}\n` +
-        `Tile: ${tile.col},${tile.row}\n` +
-        `Zoom: ${cam.zoom.toFixed(2)}`
+        `Tile: ${tile.col},${tile.row}  Zoom: ${cam.zoom.toFixed(2)}\n` +
+        `Money: $${courseStore.getState().money}`
       );
 
       if (tile.col < 0 || tile.col >= GRID_COLS || tile.row < 0 || tile.row >= GRID_ROWS) {
@@ -139,20 +150,17 @@ export class BuilderScene extends Phaser.Scene {
       this.cursor.setPosition(pos.x, pos.y);
       this.cursor.setVisible(true);
 
-      if (this.isPainting) {
+      // Paint if mouse is held down (left button)
+      if (this.isPainting && pointer.leftButtonDown()) {
         this.paintTile(tile.col, tile.row);
       }
     });
 
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.rightButtonDown()) return;
-      this.isPainting = true;
-      this.lastPaintedTile = '';
-      const tile = this.worldToTile(pointer.worldX, pointer.worldY);
-      this.paintTile(tile.col, tile.row);
-    });
-
-    this.input.on('pointerup', () => {
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown() || this.isPanning) {
+        this.isPanning = false;
+        return;
+      }
       this.isPainting = false;
       this.lastPaintedTile = '';
     });
@@ -161,11 +169,17 @@ export class BuilderScene extends Phaser.Scene {
       this.cursor.setVisible(false);
     });
 
-    // Zoom
-    this.input.on('wheel', (_p: Phaser.Input.Pointer, _g: any[], _dx: number, _dy: number, dz: number) => {
-      const newZoom = Phaser.Math.Clamp(cam.zoom - dz * 0.001, 0.5, 2);
+    // --- Zoom (scroll wheel) ---
+    // Disable Phaser's built-in wheel handling in case it conflicts
+    if (this.input.mouse) this.input.mouse.disableContextMenu();
+
+    // Use DOM wheel event directly for reliable scroll zooming
+    this.game.canvas.addEventListener('wheel', (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
+      const newZoom = Phaser.Math.Clamp(cam.zoom + zoomDelta, 0.3, 3);
       cam.setZoom(newZoom);
-    });
+    }, { passive: false });
   }
 
   private paintTile(col: number, row: number): void {
