@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import { useCourseStore } from '../state/course';
-import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST } from '../utils/constants';
+import { GRID_COLS, GRID_ROWS, TerrainType, TERRAIN_TYPES, TERRAIN_COST } from '../utils/constants';
 import { IsoTransform } from '../systems/IsoTransform';
 
 export class BuilderScene extends Phaser.Scene {
@@ -11,10 +11,9 @@ export class BuilderScene extends Phaser.Scene {
   private isPainting = false;
   private lastPaintedTile: string = '';
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-
-  // HTML overlay elements
   private terrainPalette!: HTMLDivElement;
   private moneyDisplay!: HTMLDivElement;
+  private helpText!: HTMLDivElement;
 
   constructor() {
     super({ key: 'BuilderScene' });
@@ -23,41 +22,36 @@ export class BuilderScene extends Phaser.Scene {
   create(): void {
     this.iso = new IsoTransform(this);
 
-    // Compute world bounds from grid
-    const offset = this.iso.getOffset();
-    const topLeft = this.iso.tileToWorld(0, 0);
-    const bottomRight = this.iso.tileToWorld(GRID_COLS - 1, GRID_ROWS - 1);
+    // Center camera on the grid
+    const center = this.iso.getGridCenter();
+    const bounds = this.iso.getWorldBounds();
 
-    const worldWidth = Math.abs(bottomRight.x - topLeft.x) + 400;
-    const worldHeight = Math.abs(bottomRight.y - topLeft.y) + 400;
-
-    const centerX = (topLeft.x + bottomRight.x) / 2 + offset.x;
-    const centerY = (topLeft.y + bottomRight.y) / 2 + offset.y;
-
-    const cam = this.cameras.main;
-    cam.setBounds(-200, -200, worldWidth + 400, worldHeight + 400);
-    cam.centerOn(centerX, centerY);
+    this.cameras.main.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+    this.cameras.main.centerOn(center.x, center.y);
 
     // Create tile sprites
     this.createGrid();
 
-    // Cursor sprite
+    // Cursor highlight
     this.cursor = this.add.sprite(0, 0, 'cursor');
     this.cursor.setOrigin(0.5, 0.5);
     this.cursor.setDepth(1000);
     this.cursor.setVisible(false);
 
-    // Keyboard cursor keys for camera panning
-    this.cursors = this.input.keyboard!.createCursorKeys();
+    // Keyboard controls
+    if (this.input.keyboard) {
+      this.cursors = this.input.keyboard.createCursorKeys();
+    }
 
-    // Setup HTML UI
+    // HTML overlays
     this.createUI();
 
-    // Input handlers
+    // Mouse/touch input
     this.setupInput();
 
     // Scroll zoom
-    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: any[], _dx: number, _dy: number, dz: number) => {
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gx: any[], _dx: number, _dy: number, dz: number) => {
+      const cam = this.cameras.main;
       const newZoom = Phaser.Math.Clamp(cam.zoom - dz * 0.001, 0.5, 2);
       cam.setZoom(newZoom);
     });
@@ -95,7 +89,6 @@ export class BuilderScene extends Phaser.Scene {
   private setupInput(): void {
     const cam = this.cameras.main;
 
-    // Mouse move → update cursor + paint if dragging
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       const worldX = pointer.worldX;
       const worldY = pointer.worldY;
@@ -122,7 +115,6 @@ export class BuilderScene extends Phaser.Scene {
       }
     });
 
-    // Left click → start painting
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (pointer.rightButtonDown()) return;
       this.isPainting = true;
@@ -145,12 +137,10 @@ export class BuilderScene extends Phaser.Scene {
     const tileKey = `${col},${row}`;
     if (tileKey === this.lastPaintedTile) return;
     this.lastPaintedTile = tileKey;
-
     if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return;
 
     const store = useCourseStore.getState();
-    const currentType = store.grid[row][col].type;
-    if (currentType === this.selectedTerrain) return;
+    if (store.grid[row][col].type === this.selectedTerrain) return;
 
     const cost = TERRAIN_COST[this.selectedTerrain];
     if (store.money < cost) return;
@@ -170,7 +160,6 @@ export class BuilderScene extends Phaser.Scene {
       display: flex; flex-direction: column; gap: 4px; font-family: sans-serif;
       min-width: 140px;
     `;
-
     const title = document.createElement('div');
     title.textContent = '🏗️ Terrain';
     title.style.cssText = 'color: #fff; font-weight: bold; font-size: 14px; margin-bottom: 6px;';
@@ -202,18 +191,18 @@ export class BuilderScene extends Phaser.Scene {
     `;
     this.updateMoneyDisplay();
 
-    const helpText = document.createElement('div');
-    helpText.id = 'help-text';
-    helpText.style.cssText = `
+    this.helpText = document.createElement('div');
+    this.helpText.id = 'help-text';
+    this.helpText.style.cssText = `
       position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 100;
       background: rgba(0,0,0,0.7); border-radius: 6px; padding: 8px 16px;
       color: #aaa; font-family: sans-serif; font-size: 12px;
     `;
-    helpText.textContent = 'Left-click: Paint terrain | Scroll: Zoom | Right-drag: Pan';
+    this.helpText.textContent = 'Left-click: Paint terrain | Scroll: Zoom | Right-drag: Pan';
 
     document.body.appendChild(this.terrainPalette);
     document.body.appendChild(this.moneyDisplay);
-    document.body.appendChild(helpText);
+    document.body.appendChild(this.helpText);
   }
 
   private updatePaletteSelection(): void {
@@ -232,7 +221,7 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   update(): void {
-    // Keyboard camera pan
+    if (!this.cursors) return;
     const cam = this.cameras.main;
     const speed = 5;
     if (this.cursors.left.isDown) cam.scrollX -= speed;
@@ -244,6 +233,6 @@ export class BuilderScene extends Phaser.Scene {
   shutdown(): void {
     this.terrainPalette?.remove();
     this.moneyDisplay?.remove();
-    document.getElementById('help-text')?.remove();
+    this.helpText?.remove();
   }
 }

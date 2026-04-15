@@ -13,19 +13,13 @@ export class IsoTransform {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    // Center the grid horizontally, offset from top
-    this.offsetX = 0;
-    this.offsetY = 0;
-    this.recalculateOffset();
-  }
-
-  /** Recalculate offset to center the grid on screen */
-  recalculateOffset(): void {
-    const cam = this.scene.cameras.main;
-    // Top-left tile of the grid in screen coords
-    // We want the grid centered in the world
-    this.offsetX = (GRID_COLS * TILE_WIDTH) / 2;
-    this.offsetY = TILE_HEIGHT * 2; // Some top padding
+    // Offset so the grid is centered in the world
+    // tileToWorld(0,0) gives the top corner of the diamond grid
+    // tileToWorld(COLS-1, ROWS-1) gives the bottom
+    // We need x to be positive for all tiles, so offset by the leftmost point
+    // Leftmost tile is (col-0, row=ROWS-1): x = (0 - (ROWS-1)) * (TILE_WIDTH/2)
+    this.offsetX = (GRID_ROWS - 1) * (TILE_WIDTH / 2) + 100; // 100px padding
+    this.offsetY = 100; // top padding
   }
 
   /** Tile (col, row) → world position (for placing sprites) */
@@ -39,16 +33,36 @@ export class IsoTransform {
     return clampTile(result.col, result.row, GRID_COLS, GRID_ROWS);
   }
 
-  /** Screen position (pointer) → nearest tile, accounting for camera */
-  screenToTileWorld(pointerX: number, pointerY: number): { col: number; row: number } {
-    const cam = this.scene.cameras.main;
-    const worldX = pointerX + cam.scrollX;
-    const worldY = pointerY + cam.scrollY;
-    // Account for zoom
-    const zoom = cam.zoom;
-    const adjustedX = (worldX - cam.width / 2) / zoom + cam.width / 2;
-    const adjustedY = (worldY - cam.height / 2) / zoom + cam.height / 2;
-    return this.worldToTile(adjustedX, adjustedY);
+  /** Get the center of the grid in world coordinates */
+  getGridCenter(): { x: number; y: number } {
+    const topLeft = this.tileToWorld(0, 0);
+    const topRight = this.tileToWorld(GRID_COLS - 1, 0);
+    const bottomLeft = this.tileToWorld(0, GRID_ROWS - 1);
+    const bottomRight = this.tileToWorld(GRID_COLS - 1, GRID_ROWS - 1);
+    return {
+      x: (topLeft.x + topRight.x + bottomLeft.x + bottomRight.x) / 4,
+      y: (topLeft.y + topRight.y + bottomLeft.y + bottomRight.y) / 4,
+    };
+  }
+
+  /** Get the world bounds that encompass the entire grid */
+  getWorldBounds(): { x: number; y: number; width: number; height: number } {
+    const topLeft = this.tileToWorld(0, 0);
+    const topRight = this.tileToWorld(GRID_COLS - 1, 0);
+    const bottomLeft = this.tileToWorld(0, GRID_ROWS - 1);
+    const bottomRight = this.tileToWorld(GRID_COLS - 1, GRID_ROWS - 1);
+
+    const minX = Math.min(topLeft.x, bottomLeft.x) - 100;
+    const minY = Math.min(topLeft.y, topRight.y) - 100;
+    const maxX = Math.max(topRight.x, bottomRight.x) + 100;
+    const maxY = Math.max(bottomLeft.y, bottomRight.y) + 100;
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
   }
 
   getOffset(): { x: number; y: number } {
