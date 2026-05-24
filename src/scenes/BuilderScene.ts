@@ -146,9 +146,9 @@ export class BuilderScene extends Phaser.Scene {
     const key = `${col},${row}`;
     if (this.vegetationOverlaySprites.has(key)) return;
 
-    const plant = this.add.sprite(pos.x, pos.y - 8, vegetationKey);
+    const plant = this.add.sprite(pos.x, pos.y - 4, vegetationKey);
     plant.setOrigin(0.5, 1);
-    plant.setScale(0.12);
+    plant.setScale(0.55);
     plant.setDepth(9999);
     this.vegetationOverlaySprites.set(key, plant);
   }
@@ -770,7 +770,7 @@ export class BuilderScene extends Phaser.Scene {
       position: fixed; top: 10px; left: 190px; z-index: 101;
       background: rgba(0,0,0,0.9); border-radius: 8px; padding: 12px;
       display: flex; flex-direction: column; gap: 8px; font-family: sans-serif;
-      width: 280px; max-height: calc(100vh - 20px);
+      width: 320px; max-height: calc(100vh - 20px);
     `;
 
     // Header with close button
@@ -827,7 +827,7 @@ export class BuilderScene extends Phaser.Scene {
 
     // Grid container
     const gridContainer = document.createElement('div');
-    gridContainer.style.cssText = 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; overflow-y: auto;';
+    gridContainer.style.cssText = 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; overflow-y: auto; min-height: 0; max-height: calc(100vh - 160px);';
     panel.appendChild(gridContainer);
 
     const updateFilter = () => {
