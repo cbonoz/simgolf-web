@@ -7,7 +7,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.image('tree_birch', 'assets/sprites/tree_birch.png');
+    // Golfer characters (16x16 frames, 8x8 grid)
     this.load.spritesheet('golfers', 'assets/sprites/golfers.png', { frameWidth: 16, frameHeight: 16 });
 
     // Load all vegetation sprites from the isometric-plants pack
@@ -103,10 +103,7 @@ export class BootScene extends Phaser.Scene {
         g.strokePath();
         break;
       case 'trees':
-        g.fillStyle(0x1a4a15, 0.8);
-        g.fillTriangle(cx, cy - 6, cx - 5, cy + 2, cx + 5, cy + 2);
-        g.fillStyle(0x5c3a1a, 0.8);
-        g.fillRect(cx - 1, cy + 2, 2, 4);
+        // Base tile is plain dark ground — real vegetation sprites overlay on top
         break;
       case 'rough':
         g.fillStyle(0x5a6b2e, 0.4);
