@@ -20,6 +20,7 @@ export interface CourseState {
   grid: Tile[][];
   holes: HoleConfig[];
   money: number;
+  debt: number;
   setTile: (col: number, row: number, type: TerrainType) => void;
   setVegetation: (col: number, row: number, vegetation: string | null) => void;
   setTee: (holeId: number, col: number, row: number) => void;
@@ -32,7 +33,23 @@ export interface CourseState {
   spendMoney: (amount: number) => boolean;
   getTile: (col: number, row: number) => Tile;
   resetCourse: () => void;
+  serialize: () => string;
+  loadFromSave: (json: string) => boolean;
+  hasLocalSave: () => boolean;
+  takeLoan: (amount: number) => void;
+  repayLoan: (amount: number) => boolean;
 }
+
+export interface CourseSaveData {
+  version: number;
+  grid: Tile[][];
+  holes: HoleConfig[];
+  money: number;
+  debt: number;
+  savedAt: string;
+}
+
+export const SAVE_VERSION = 2;
 
 function createEmptyGrid(): Tile[][] {
   const grid: Tile[][] = [];
@@ -64,6 +81,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   grid: createEmptyGrid(),
   holes: createDefaultHoles(),
   money: 5000,
+  debt: 0,
 
   setTile: (col, row, type) =>
     set((state) => {
@@ -145,9 +163,11 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
     const state = get();
     try {
       localStorage.setItem('simgolf_course_v1', JSON.stringify({
+        version: SAVE_VERSION,
         grid: state.grid,
         holes: state.holes,
         money: state.money,
+        debt: state.debt,
         savedAt: new Date().toISOString(),
       }));
     } catch (e) {
@@ -164,6 +184,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         grid: data.grid,
         holes: data.holes,
         money: data.money,
+        debt: data.debt ?? 0,
       });
       return true;
     } catch (e) {
@@ -189,5 +210,56 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       grid: createEmptyGrid(),
       holes: createDefaultHoles(),
       money: 5000,
+      debt: 0,
     }),
+
+  serialize: () => {
+    const { grid, holes, money, debt } = get();
+    const data: CourseSaveData = {
+      version: SAVE_VERSION,
+      grid,
+      holes,
+      money,
+      debt,
+      savedAt: new Date().toISOString(),
+    };
+    return JSON.stringify(data);
+  },
+
+  loadFromSave: (json: string) => {
+    try {
+      const data: CourseSaveData = JSON.parse(json);
+      if (data.version !== SAVE_VERSION) {
+        console.warn(`Unknown save version ${data.version}, attempting to load anyway`);
+      }
+      set({
+        grid: data.grid,
+        holes: data.holes,
+        money: data.money,
+        debt: data.debt ?? 0,
+      });
+      return true;
+    } catch (e) {
+      console.warn('Failed to load from save data:', e);
+      return false;
+    }
+  },
+
+  hasLocalSave: () => {
+    return localStorage.getItem('simgolf_course_v1') !== null;
+  },
+
+  takeLoan: (amount) => {
+    if (amount <= 0) return;
+    set((state) => ({ money: state.money + amount, debt: state.debt + amount }));
+  },
+
+  repayLoan: (amount) => {
+    if (amount <= 0) return false;
+    const state = get();
+    const actual = Math.min(amount, state.money, state.debt);
+    if (actual <= 0) return false;
+    set({ money: state.money - actual, debt: state.debt - actual });
+    return true;
+  },
 }));

@@ -58,27 +58,17 @@ export class BuilderScene extends Phaser.Scene {
   private readonly OFFSET_X = (GRID_ROWS - 1) * (TILE_WIDTH / 2) + 100;
   private readonly OFFSET_Y = 100;
 
-  // Camera rotation (0=0°, 1=90° CW, 2=180°, 3=270° CW)
-  private cameraRotation = 0;
-  private gridCenterWorld = { x: 0, y: 0 };
-
   constructor() {
     super({ key: 'BuilderScene' });
   }
 
   create(): void {
-    // Compute grid center for rotation pivot (use unrotated projection)
-    const centerCol = (GRID_COLS - 1) / 2;
-    const centerRow = (GRID_ROWS - 1) / 2;
-    this.gridCenterWorld = {
-      x: (centerCol - centerRow) * (TILE_WIDTH / 2) + this.OFFSET_X,
-      y: (centerCol + centerRow) * (TILE_HEIGHT / 2) + this.OFFSET_Y,
-    };
-
     // Center camera on the grid
     const cam = this.cameras.main;
-    cam.scrollX = this.gridCenterWorld.x - cam.width / 2;
-    cam.scrollY = this.gridCenterWorld.y - cam.height / 2;
+    const centerCol = (GRID_COLS - 1) / 2;
+    const centerRow = (GRID_ROWS - 1) / 2;
+    cam.scrollX = (centerCol - centerRow) * (TILE_WIDTH / 2) + this.OFFSET_X - cam.width / 2;
+    cam.scrollY = (centerCol + centerRow) * (TILE_HEIGHT / 2) + this.OFFSET_Y - cam.height / 2;
 
     // Prevent right-click context menu so we can use right-drag for panning
     this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -102,15 +92,12 @@ export class BuilderScene extends Phaser.Scene {
       fontFamily: 'monospace',
     }).setScrollFactor(0).setDepth(10000);
 
+    // Clean up DOM elements on scene shutdown
+    this.events.on('shutdown', this.shutdown, this);
+
     // Keyboard
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
-
-      // Camera rotation (Insert = CCW, Delete = CW — SimGolf style; also Q/E)
-      this.input.keyboard.on('keydown-INSERT', () => this.rotateCamera(-1));
-      this.input.keyboard.on('keydown-DELETE', () => this.rotateCamera(1));
-      this.input.keyboard.on('keydown-Q', () => this.rotateCamera(-1));
-      this.input.keyboard.on('keydown-E', () => this.rotateCamera(1));
     }
 
     this.createUI();
@@ -125,66 +112,15 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   private worldToTile(worldX: number, worldY: number): { col: number; row: number } {
-    // Rotate pointer coordinates by -cameraRotation to undo camera rotation
-    const rotated = this.rotateCCW(worldX, worldY, this.gridCenterWorld.x, this.gridCenterWorld.y, this.cameraRotation);
-    const result = screenToTile(rotated.x, rotated.y, this.OFFSET_X, this.OFFSET_Y);
+    const result = screenToTile(worldX, worldY, this.OFFSET_X, this.OFFSET_Y);
     return clampTile(result.col, result.row, GRID_COLS, GRID_ROWS);
   }
 
-  // Rotate a point (x, y) around (cx, cy) by quarters * 90° clockwise
-  private rotateCW(x: number, y: number, cx: number, cy: number, quarters: number): { x: number; y: number } {
-    let relX = x - cx;
-    let relY = y - cy;
-    for (let i = 0; i < quarters; i++) {
-      const newX = relY;
-      const newY = -relX;
-      relX = newX;
-      relY = newY;
-    }
-    return { x: relX + cx, y: relY + cy };
-  }
-
-  // Rotate a point (x, y) around (cx, cy) by quarters * 90° counter-clockwise
-  private rotateCCW(x: number, y: number, cx: number, cy: number, quarters: number): { x: number; y: number } {
-    let relX = x - cx;
-    let relY = y - cy;
-    for (let i = 0; i < quarters; i++) {
-      const newX = -relY;
-      const newY = relX;
-      relX = newX;
-      relY = newY;
-    }
-    return { x: relX + cx, y: relY + cy };
-  }
-
-  private rotateCamera(delta: number): void {
-    this.cameraRotation = ((this.cameraRotation + delta) % 4 + 4) % 4;
-    const radians = (this.cameraRotation * Math.PI) / 2;
-
-    // Rotate the camera (changes the viewing angle of the grid)
-    this.cameras.main.setRotation(radians);
-
-    // Counter-rotate entity sprites so they stay visually upright on screen
-    this.syncSpriteRotations();
-    this.updateHelpText();
-  }
-
-  private syncSpriteRotations(): void {
-    const radians = (this.cameraRotation * Math.PI) / 2;
-    const counterRotation = -radians;
-
-    // Entity sprites stay upright
-    this.vegetationOverlaySprites.forEach((s) => s.setRotation(counterRotation));
-    this.teeSprites.forEach((s) => s.setRotation(counterRotation));
-    this.flagSprites.forEach((s) => s.setRotation(counterRotation));
-  }
-
   private updateHelpText(): void {
-    const rotLabel = ['North', 'East', 'South', 'West'][this.cameraRotation];
     if (this.builderMode === 'paint') {
-      this.helpText.textContent = `Left-click: Paint | Scroll: Zoom | Right-drag: Pan | Q/E: Rotate (${rotLabel}) | Ctrl+Z: Undo`;
+      this.helpText.textContent = 'Left-click: Paint | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     } else {
-      this.helpText.textContent = `Left-click: Place tee/cup | Scroll: Zoom | Right-drag: Pan | Q/E: Rotate (${rotLabel}) | Ctrl+Z: Undo`;
+      this.helpText.textContent = 'Left-click: Place tee/cup | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     }
   }
 
@@ -199,7 +135,7 @@ export class BuilderScene extends Phaser.Scene {
         const tile = store.grid[row][col];
         const sprite = this.add.sprite(pos.x, pos.y, `tile_${tile.type}`);
         sprite.setOrigin(0.5, 0.5);
-        sprite.setDepth(col + row);
+        sprite.setDepth((col + row) * GRID_COLS + col);
         this.tileSprites[row][col] = sprite;
 
         if (tile.vegetation) {
@@ -221,9 +157,8 @@ export class BuilderScene extends Phaser.Scene {
     const plant = this.add.sprite(pos.x, pos.y - 4, vegetationKey);
     plant.setOrigin(0.5, 1);
     plant.setScale(0.55);
-    plant.setDepth(9999);
+    plant.setDepth((col + row) * GRID_COLS + col + 0.5);
     this.vegetationOverlaySprites.set(key, plant);
-    this.syncSpriteRotations();
   }
 
   private removeVegetationOverlay(col: number, row: number): void {
@@ -251,7 +186,6 @@ export class BuilderScene extends Phaser.Scene {
         }
       }
     }
-    this.syncSpriteRotations();
     this.updateMoneyDisplay();
   }
 
@@ -428,7 +362,10 @@ export class BuilderScene extends Phaser.Scene {
         const vegCost = vegInfo?.cost ?? 0;
         const totalCost = terrainCost + vegCost;
 
-        if (store.money < totalCost) return;
+        if (store.money < totalCost) {
+          this.showTemporaryMessage(`Not enough money! Need $${totalCost.toLocaleString()}, have $${store.money.toLocaleString()}`);
+          return;
+        }
         if (store.spendMoney(totalCost)) {
           store.setTile(col, row, 'trees');
           store.setVegetation(col, row, this.selectedVegetation);
@@ -438,7 +375,10 @@ export class BuilderScene extends Phaser.Scene {
         // Already trees, just changing vegetation
         const vegInfo = VEGETATION_TYPES.find((v) => v.key === this.selectedVegetation);
         const vegCost = vegInfo?.cost ?? 0;
-        if (store.money < vegCost) return;
+        if (store.money < vegCost) {
+          this.showTemporaryMessage(`Not enough money! Need $${vegCost.toLocaleString()}, have $${store.money.toLocaleString()}`);
+          return;
+        }
         if (store.spendMoney(vegCost)) {
           store.setVegetation(col, row, this.selectedVegetation);
           this.refreshGrid();
@@ -451,7 +391,10 @@ export class BuilderScene extends Phaser.Scene {
     if (tile.type === this.selectedTerrain) return;
 
     const cost = TERRAIN_COST[this.selectedTerrain];
-    if (store.money < cost) return;
+    if (store.money < cost) {
+      this.showTemporaryMessage(`Not enough money! Need $${cost.toLocaleString()}, have $${store.money.toLocaleString()}`);
+      return;
+    }
 
     if (store.spendMoney(cost)) {
       store.setTile(col, row, this.selectedTerrain);
@@ -539,18 +482,17 @@ export class BuilderScene extends Phaser.Scene {
         const pos = this.tileToWorld(hole.tee.col, hole.tee.row);
         const sprite = this.add.sprite(pos.x, pos.y - 4, 'tee_marker');
         sprite.setOrigin(0.5, 1);
-        sprite.setDepth(9998);
+        sprite.setDepth((hole.tee.col + hole.tee.row) * GRID_COLS + hole.tee.col + 0.3);
         this.teeSprites.set(`tee_${hole.id}`, sprite);
       }
       if (hole.cup) {
         const pos = this.tileToWorld(hole.cup.col, hole.cup.row);
         const sprite = this.add.sprite(pos.x, pos.y - 6, 'flag');
         sprite.setOrigin(0.5, 1);
-        sprite.setDepth(9998);
+        sprite.setDepth((hole.cup.col + hole.cup.row) * GRID_COLS + hole.cup.col + 0.3);
         this.flagSprites.set(`flag_${hole.id}`, sprite);
       }
     }
-    this.syncSpriteRotations();
   }
 
   private createUI(): void {
@@ -694,35 +636,49 @@ export class BuilderScene extends Phaser.Scene {
     this.updateVegetationPickerSelection();
     this.updateHoleUI();
 
-    // New Course button
-    const newCourseBtn = document.createElement('button');
-    newCourseBtn.textContent = '🗑️ New Course';
-    newCourseBtn.style.cssText = `
-      margin-top: 4px; padding: 8px; border: 2px solid #c62828; border-radius: 4px;
-      cursor: pointer; font-size: 12px; background: #444; color: #ff8a80;
+    // Return to Menu button
+    const returnBtn = document.createElement('button');
+    returnBtn.textContent = '🔙 Return to Menu';
+    returnBtn.style.cssText = `
+      margin-top: 4px; padding: 8px; border: 2px solid #1565c0; border-radius: 4px;
+      cursor: pointer; font-size: 12px; background: #444; color: #90caf9;
       font-weight: bold;
     `;
-    newCourseBtn.addEventListener('click', () => {
-      if (confirm('Start a new course? All progress will be lost.')) {
-        courseStore.getState().resetCourse();
-        courseStore.getState().saveCourse();
-        this.undoStack = [];
-        this.redoStack = [];
-        this.refreshGrid();
-        this.refreshHoleOverlays();
-        this.updateHoleUI();
-        this.updateMoneyDisplay();
-      }
+    returnBtn.addEventListener('click', () => {
+      courseStore.getState().saveCourse();
+      this.scene.start('TitleScene');
     });
-    this.terrainPalette.appendChild(newCourseBtn);
+    this.terrainPalette.appendChild(returnBtn);
 
-    // Money display
+    // Download Save button
+    const downloadBtn = document.createElement('button');
+    downloadBtn.textContent = '💾 Download Save';
+    downloadBtn.style.cssText = `
+      margin-top: 4px; padding: 8px; border: 2px solid #1565c0; border-radius: 4px;
+      cursor: pointer; font-size: 12px; background: #444; color: #90caf9;
+      font-weight: bold;
+    `;
+    downloadBtn.addEventListener('click', () => {
+      const json = courseStore.getState().serialize();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'simgolf-course.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+    this.terrainPalette.appendChild(downloadBtn);
+
+    // Money display (clickable to expand loan controls)
     this.moneyDisplay = document.createElement('div');
     this.moneyDisplay.id = 'money-display';
     this.moneyDisplay.style.cssText = `
       position: fixed; top: 10px; right: 10px; z-index: 100;
       background: rgba(0,0,0,0.85); border-radius: 8px; padding: 10px 16px;
-      color: #4caf50; font-family: monospace; font-size: 18px; font-weight: bold;
+      cursor: pointer; user-select: none;
     `;
     this.updateMoneyDisplay();
 
@@ -972,8 +928,90 @@ export class BuilderScene extends Phaser.Scene {
 
   private updateMoneyDisplay(): void {
     const store = courseStore.getState();
-    if (this.moneyDisplay) {
-      this.moneyDisplay.textContent = `💰 $${store.money.toLocaleString()}`;
+    if (!this.moneyDisplay) return;
+
+    let header = this.moneyDisplay.querySelector('.money-header') as HTMLElement;
+    let expanded = this.moneyDisplay.querySelector('.money-expanded') as HTMLElement;
+
+    if (!header) {
+      this.moneyDisplay.innerHTML = '';
+      header = document.createElement('div');
+      header.className = 'money-header';
+      header.style.cssText = 'cursor: pointer; color: #4caf50; font-family: monospace; font-size: 18px; font-weight: bold;';
+      this.moneyDisplay.appendChild(header);
+
+      expanded = document.createElement('div');
+      expanded.className = 'money-expanded';
+      expanded.style.cssText = 'display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #444;';
+      expanded.innerHTML = `
+        <div class="debt-info" style="font-family:monospace;font-size:13px;line-height:1.6;color:#ccc;"></div>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+          <input type="number" min="0" step="100" value="1000"
+            style="width:80px;padding:6px;border:1px solid #555;border-radius:4px;background:#333;color:#fff;font-size:12px;font-family:monospace;">
+          <button class="loan-borrow"
+            style="padding:6px 10px;border:1px solid #2e7d32;border-radius:4px;cursor:pointer;font-size:11px;background:#444;color:#81c784;font-weight:bold;">Borrow</button>
+          <button class="loan-repay"
+            style="padding:6px 10px;border:1px solid #ef5350;border-radius:4px;cursor:pointer;font-size:11px;background:#444;color:#ef5350;font-weight:bold;">Repay</button>
+        </div>
+      `;
+      this.moneyDisplay.appendChild(expanded);
+
+      const input = expanded.querySelector('input')!;
+      expanded.querySelector('.loan-borrow')!.addEventListener('click', () => {
+        const amount = parseInt(input.value, 10);
+        if (amount > 0) {
+          courseStore.getState().takeLoan(amount);
+          this.updateMoneyDisplay();
+          input.value = '1000';
+        }
+      });
+      expanded.querySelector('.loan-repay')!.addEventListener('click', () => {
+        const amount = parseInt(input.value, 10);
+        if (amount > 0) {
+          courseStore.getState().repayLoan(amount);
+          this.updateMoneyDisplay();
+          input.value = '1000';
+        }
+      });
+
+      // Toggle expanded section on header click
+      header.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = expanded!.style.display !== 'none';
+        expanded!.style.display = isOpen ? 'none' : 'block';
+        this.updateMoneyDisplay();
+      });
+
+      // Dismiss on outside click
+      const dismiss = (e: MouseEvent) => {
+        if (!this.moneyDisplay!.contains(e.target as Node)) {
+          expanded!.style.display = 'none';
+        }
+      };
+      document.addEventListener('click', dismiss);
+
+      // Clean up on scene shutdown
+      this.events.on('shutdown', () => {
+        document.removeEventListener('click', dismiss);
+      });
+    }
+
+    const cashColor = store.money > 0 ? '#4caf50' : '#ef5350';
+    header.innerHTML = `<span style="color:${cashColor};">💰 $${store.money.toLocaleString()}</span>`;
+
+    const debtInfo = this.moneyDisplay.querySelector('.debt-info') as HTMLElement;
+    if (debtInfo) {
+      const net = store.money - store.debt;
+      const lines: string[] = [];
+      lines.push(`Cash: <span style="color:${cashColor};">$${store.money.toLocaleString()}</span>`);
+      if (store.debt > 0) {
+        lines.push(`Debt: <span style="color:#ef5350;">-$${store.debt.toLocaleString()}</span>`);
+      } else {
+        lines.push('Debt: <span style="color:#666;">$0</span>');
+      }
+      const netColor = net >= 0 ? '#81c784' : '#ef5350';
+      lines.push(`Net: <span style="color:${netColor};">$${net.toLocaleString()}</span>`);
+      debtInfo.innerHTML = lines.join('<br>');
     }
   }
 
