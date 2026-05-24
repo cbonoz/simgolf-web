@@ -31,6 +31,40 @@ export const TERRAIN_COLORS: Record<TerrainType, number> = {
   green: 0x5cb85c,
 };
 
+// Vegetation / Foliage types (sprite key, display name, cost)
+export interface VegetationType {
+  key: string;
+  name: string;
+  cost: number;
+  category: string;
+}
+
+export const VEGETATION_TYPES: VegetationType[] = [
+  // Big trees (premium)
+  { key: 'bigtree01', name: 'Oak', cost: 50, category: 'Tree' },
+  { key: 'bigtree02', name: 'Elm', cost: 45, category: 'Tree' },
+  { key: 'bigtree03', name: 'Maple', cost: 40, category: 'Tree' },
+  // Pines
+  { key: 'pine-full01', name: 'Pine A', cost: 30, category: 'Pine' },
+  { key: 'pine-full02', name: 'Pine B', cost: 28, category: 'Pine' },
+  { key: 'pine-half01', name: 'Snow Pine', cost: 35, category: 'Pine' },
+  // Palms
+  { key: 'palm01', name: 'Palm A', cost: 25, category: 'Palm' },
+  { key: 'palm02', name: 'Palm B', cost: 22, category: 'Palm' },
+  // Bushes
+  { key: 'bush01', name: 'Bush A', cost: 10, category: 'Bush' },
+  { key: 'bush02', name: 'Bush B', cost: 12, category: 'Bush' },
+  { key: 'bush03', name: 'Bush C', cost: 8, category: 'Bush' },
+  // Grasses & ground cover
+  { key: 'grasses01', name: 'Grass A', cost: 3, category: 'Grass' },
+  { key: 'grasses02', name: 'Grass B', cost: 4, category: 'Grass' },
+  { key: 'weed01', name: 'Weeds', cost: 2, category: 'Grass' },
+  // Bamboo
+  { key: 'bamboo01', name: 'Bamboo', cost: 15, category: 'Bamboo' },
+  // Cactus
+  { key: 'cactus01', name: 'Cactus', cost: 18, category: 'Cactus' },
+];
+
 // Game settings
 export const MAX_STROKES_PER_HOLE = 10;
 export const MAX_GOLFERS_ON_COURSE = 12;

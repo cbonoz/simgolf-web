@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { TILE_WIDTH, TILE_HEIGHT, TERRAIN_COLORS, TerrainType, TERRAIN_TYPES } from '../utils/constants';
+import { TILE_WIDTH, TILE_HEIGHT, TERRAIN_COLORS, TerrainType, TERRAIN_TYPES, VEGETATION_TYPES } from '../utils/constants';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -9,6 +9,11 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     this.load.image('tree_birch', 'assets/sprites/tree_birch.png');
     this.load.spritesheet('golfers', 'assets/sprites/golfers.png', { frameWidth: 16, frameHeight: 16 });
+
+    // Load all vegetation sprites from the isometric-plants pack
+    for (const v of VEGETATION_TYPES) {
+      this.load.image(v.key, `assets/sprites/isometric-plants/${v.key}.png`);
+    }
   }
 
   create(): void {

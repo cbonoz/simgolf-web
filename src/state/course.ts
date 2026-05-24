@@ -6,6 +6,7 @@ export interface Tile {
   hole: number | null;
   isTee: boolean;
   isCup: boolean;
+  vegetation: string | null; // sprite key for vegetation overlay
 }
 
 export interface HoleConfig {
@@ -20,6 +21,7 @@ export interface CourseState {
   holes: HoleConfig[];
   money: number;
   setTile: (col: number, row: number, type: TerrainType) => void;
+  setVegetation: (col: number, row: number, vegetation: string | null) => void;
   setTee: (holeId: number, col: number, row: number) => void;
   setCup: (holeId: number, col: number, row: number) => void;
   setPar: (holeId: number, par: number) => void;
@@ -42,6 +44,7 @@ function createEmptyGrid(): Tile[][] {
         hole: null,
         isTee: false,
         isCup: false,
+        vegetation: null,
       };
     }
   }
@@ -65,7 +68,19 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   setTile: (col, row, type) =>
     set((state) => {
       const grid = state.grid.map((r) => [...r]);
-      grid[row][col] = { ...grid[row][col], type };
+      const tile = { ...grid[row][col], type };
+      // Clear vegetation if terrain is no longer trees
+      if (type !== 'trees') {
+        tile.vegetation = null;
+      }
+      grid[row][col] = tile;
+      return { grid };
+    }),
+
+  setVegetation: (col, row, vegetation) =>
+    set((state) => {
+      const grid = state.grid.map((r) => [...r]);
+      grid[row][col] = { ...grid[row][col], vegetation };
       return { grid };
     }),
 

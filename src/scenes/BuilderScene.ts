@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import { courseStore, Tile, HoleConfig } from '../state/course';
-import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST } from '../utils/constants';
+import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES } from '../utils/constants';
 import { tileToScreen, screenToTile, clampTile, calculatePar } from '../utils/helpers';
 
 type CourseSnapshot = {
@@ -28,7 +28,9 @@ export class BuilderScene extends Phaser.Scene {
   private selectedHoleId: number = 1;
   private teeSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private flagSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
-  private treeOverlaySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  private vegetationOverlaySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  private selectedVegetation: string = VEGETATION_TYPES[0].key;
+  private vegetationPickerContainer!: HTMLDivElement;
   private modeButtons: HTMLButtonElement[] = [];
   private holeButtons: HTMLButtonElement[] = [];
   private holeStatusDisplay!: HTMLDivElement;
@@ -127,30 +129,35 @@ export class BuilderScene extends Phaser.Scene {
         sprite.setDepth(col + row);
         this.tileSprites[row][col] = sprite;
 
-        if (tile.type === 'trees') {
-          this.addTreeOverlay(col, row, pos);
+        if (tile.vegetation) {
+          this.addVegetationOverlay(col, row, pos, tile.vegetation);
         }
       }
     }
   }
 
-  private addTreeOverlay(col: number, row: number, pos: { x: number; y: number }): void {
+  private addVegetationOverlay(
+    col: number,
+    row: number,
+    pos: { x: number; y: number },
+    vegetationKey: string
+  ): void {
     const key = `${col},${row}`;
-    if (this.treeOverlaySprites.has(key)) return;
+    if (this.vegetationOverlaySprites.has(key)) return;
 
-    const tree = this.add.sprite(pos.x, pos.y - 8, 'tree_birch');
-    tree.setOrigin(0.5, 1);
-    tree.setScale(0.15);
-    tree.setDepth(9999);
-    this.treeOverlaySprites.set(key, tree);
+    const plant = this.add.sprite(pos.x, pos.y - 8, vegetationKey);
+    plant.setOrigin(0.5, 1);
+    plant.setScale(0.12);
+    plant.setDepth(9999);
+    this.vegetationOverlaySprites.set(key, plant);
   }
 
-  private removeTreeOverlay(col: number, row: number): void {
+  private removeVegetationOverlay(col: number, row: number): void {
     const key = `${col},${row}`;
-    const tree = this.treeOverlaySprites.get(key);
-    if (tree) {
-      tree.destroy();
-      this.treeOverlaySprites.delete(key);
+    const plant = this.vegetationOverlaySprites.get(key);
+    if (plant) {
+      plant.destroy();
+      this.vegetationOverlaySprites.delete(key);
     }
   }
 
@@ -162,11 +169,11 @@ export class BuilderScene extends Phaser.Scene {
         this.tileSprites[row][col].setTexture(`tile_${tile.type}`);
 
         const key = `${col},${row}`;
-        if (tile.type === 'trees') {
+        if (tile.vegetation) {
           const pos = this.tileToWorld(col, row);
-          this.addTreeOverlay(col, row, pos);
+          this.addVegetationOverlay(col, row, pos, tile.vegetation);
         } else {
-          this.removeTreeOverlay(col, row);
+          this.removeVegetationOverlay(col, row);
         }
       }
     }
@@ -330,13 +337,43 @@ export class BuilderScene extends Phaser.Scene {
 
     const store = courseStore.getState();
     const tile = store.grid[row][col];
-    if (tile.type === this.selectedTerrain) return;
 
     // Prevent painting over tees or cups
     if (tile.isTee || tile.isCup) {
       this.showTemporaryMessage("Can't paint over tee or cup!");
       return;
     }
+
+    // Trees terrain: place or replace vegetation
+    if (this.selectedTerrain === 'trees') {
+      if (tile.type !== 'trees') {
+        // Need to place base terrain first
+        const terrainCost = TERRAIN_COST.trees;
+        const vegInfo = VEGETATION_TYPES.find((v) => v.key === this.selectedVegetation);
+        const vegCost = vegInfo?.cost ?? 0;
+        const totalCost = terrainCost + vegCost;
+
+        if (store.money < totalCost) return;
+        if (store.spendMoney(totalCost)) {
+          store.setTile(col, row, 'trees');
+          store.setVegetation(col, row, this.selectedVegetation);
+          this.refreshGrid();
+        }
+      } else if (tile.vegetation !== this.selectedVegetation) {
+        // Already trees, just changing vegetation
+        const vegInfo = VEGETATION_TYPES.find((v) => v.key === this.selectedVegetation);
+        const vegCost = vegInfo?.cost ?? 0;
+        if (store.money < vegCost) return;
+        if (store.spendMoney(vegCost)) {
+          store.setVegetation(col, row, this.selectedVegetation);
+          this.refreshGrid();
+        }
+      }
+      return;
+    }
+
+    // Non-tree terrain painting
+    if (tile.type === this.selectedTerrain) return;
 
     const cost = TERRAIN_COST[this.selectedTerrain];
     if (store.money < cost) return;
@@ -503,10 +540,56 @@ export class BuilderScene extends Phaser.Scene {
       btn.addEventListener('click', () => {
         this.selectedTerrain = type as TerrainType;
         this.updatePaletteSelection();
+        this.updateVegetationPickerVisibility();
       });
       this.terrainButtonsContainer.appendChild(btn);
     }
     this.terrainPalette.appendChild(this.terrainButtonsContainer);
+
+    // Vegetation picker (shown when Trees is selected)
+    this.vegetationPickerContainer = document.createElement('div');
+    this.vegetationPickerContainer.style.cssText = 'display: none; flex-direction: column; gap: 6px; margin-top: 4px; padding-top: 8px; border-top: 1px solid #555;';
+
+    const vegLabel = document.createElement('div');
+    vegLabel.textContent = '🌿 Select Plant:';
+    vegLabel.style.cssText = 'color: #aaa; font-size: 12px; font-weight: bold;';
+    this.vegetationPickerContainer.appendChild(vegLabel);
+
+    const vegGrid = document.createElement('div');
+    vegGrid.style.cssText = 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;';
+
+    for (const veg of VEGETATION_TYPES) {
+      const btn = document.createElement('button');
+      btn.dataset.vegKey = veg.key;
+      btn.title = `${veg.name} — $${veg.cost}`;
+      btn.style.cssText = `
+        display: flex; flex-direction: column; align-items: center; gap: 2px;
+        padding: 4px; border: 2px solid transparent; border-radius: 4px;
+        cursor: pointer; font-size: 10px; background: #333; color: #fff;
+        min-height: 52px;
+      `;
+
+      // Thumbnail image
+      const img = document.createElement('img');
+      img.src = `assets/sprites/isometric-plants/${veg.key}.png`;
+      img.style.cssText = 'width: 28px; height: 28px; object-fit: contain;';
+      btn.appendChild(img);
+
+      // Label
+      const label = document.createElement('span');
+      label.textContent = `$${veg.cost}`;
+      label.style.cssText = 'font-size: 9px; color: #ccc;';
+      btn.appendChild(label);
+
+      btn.addEventListener('click', () => {
+        this.selectedVegetation = veg.key;
+        this.updateVegetationPickerSelection();
+      });
+
+      vegGrid.appendChild(btn);
+    }
+    this.vegetationPickerContainer.appendChild(vegGrid);
+    this.terrainPalette.appendChild(this.vegetationPickerContainer);
 
     // Hole controls container
     this.holeControlsContainer = document.createElement('div');
@@ -557,6 +640,8 @@ export class BuilderScene extends Phaser.Scene {
     this.helpText.textContent = 'Left-click: Paint | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
 
     this.updateUIVisibility();
+    this.updateVegetationPickerVisibility();
+    this.updateVegetationPickerSelection();
     this.updateHoleUI();
 
     // New Course button
@@ -660,6 +745,23 @@ export class BuilderScene extends Phaser.Scene {
     });
   }
 
+  private updateVegetationPickerVisibility(): void {
+    if (this.selectedTerrain === 'trees') {
+      this.vegetationPickerContainer.style.display = 'flex';
+    } else {
+      this.vegetationPickerContainer.style.display = 'none';
+    }
+  }
+
+  private updateVegetationPickerSelection(): void {
+    const buttons = this.vegetationPickerContainer.querySelectorAll('button');
+    buttons.forEach((btn) => {
+      const vegKey = (btn as HTMLButtonElement).dataset.vegKey;
+      (btn as HTMLButtonElement).style.borderColor = vegKey === this.selectedVegetation ? '#6bbf5e' : 'transparent';
+      (btn as HTMLButtonElement).style.background = vegKey === this.selectedVegetation ? '#3d5c33' : '#333';
+    });
+  }
+
   private updateMoneyDisplay(): void {
     const store = courseStore.getState();
     if (this.moneyDisplay) {
@@ -680,7 +782,8 @@ export class BuilderScene extends Phaser.Scene {
   shutdown(): void {
     this.teeSprites.forEach((s) => s.destroy());
     this.flagSprites.forEach((s) => s.destroy());
-    this.treeOverlaySprites.forEach((s) => s.destroy());
+    this.vegetationOverlaySprites.forEach((s) => s.destroy());
+    this.vegetationOverlaySprites.clear();
     this.terrainPalette?.remove();
     this.moneyDisplay?.remove();
     this.helpText?.remove();
