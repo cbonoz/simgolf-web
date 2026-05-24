@@ -548,38 +548,54 @@ export class BuilderScene extends Phaser.Scene {
 
     // Vegetation picker (shown when Trees is selected)
     this.vegetationPickerContainer = document.createElement('div');
-    this.vegetationPickerContainer.style.cssText = 'display: none; flex-direction: column; gap: 6px; margin-top: 4px; padding-top: 8px; border-top: 1px solid #555;';
+    this.vegetationPickerContainer.style.cssText =
+      'display: none; flex-direction: column; gap: 6px; margin-top: 4px; padding-top: 8px; border-top: 1px solid #555;';
 
     const vegLabel = document.createElement('div');
-    vegLabel.textContent = '🌿 Select Plant:';
-    vegLabel.style.cssText = 'color: #aaa; font-size: 12px; font-weight: bold;';
+    vegLabel.textContent = '🌿 Select Plant';
+    vegLabel.style.cssText = 'color: #fff; font-size: 13px; font-weight: bold;';
     this.vegetationPickerContainer.appendChild(vegLabel);
 
+    // Scrollable grid container
+    const vegScroll = document.createElement('div');
+    vegScroll.style.cssText = 'max-height: 340px; overflow-y: auto; padding-right: 4px;';
+
     const vegGrid = document.createElement('div');
-    vegGrid.style.cssText = 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;';
+    vegGrid.style.cssText = 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;';
 
     for (const veg of VEGETATION_TYPES) {
       const btn = document.createElement('button');
       btn.dataset.vegKey = veg.key;
       btn.title = `${veg.name} — $${veg.cost}`;
       btn.style.cssText = `
-        display: flex; flex-direction: column; align-items: center; gap: 2px;
-        padding: 4px; border: 2px solid transparent; border-radius: 4px;
-        cursor: pointer; font-size: 10px; background: #333; color: #fff;
-        min-height: 52px;
+        display: flex; flex-direction: column; align-items: center; gap: 4px;
+        padding: 8px 4px; border: 2px solid transparent; border-radius: 6px;
+        cursor: pointer; font-size: 11px; background: #2a2a2a; color: #fff;
+        min-height: 110px;
       `;
 
-      // Thumbnail image
+      // Light backdrop for the sprite so it pops against dark UI
+      const imgBox = document.createElement('div');
+      imgBox.style.cssText =
+        'width: 64px; height: 64px; background: #e8e8e8; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden;';
+
       const img = document.createElement('img');
       img.src = `assets/sprites/isometric-plants/${veg.key}.png`;
-      img.style.cssText = 'width: 28px; height: 28px; object-fit: contain;';
-      btn.appendChild(img);
+      img.style.cssText = 'width: 56px; height: 56px; object-fit: contain;';
+      imgBox.appendChild(img);
+      btn.appendChild(imgBox);
 
-      // Label
-      const label = document.createElement('span');
-      label.textContent = `$${veg.cost}`;
-      label.style.cssText = 'font-size: 9px; color: #ccc;';
-      btn.appendChild(label);
+      // Name
+      const name = document.createElement('span');
+      name.textContent = veg.name;
+      name.style.cssText = 'font-size: 11px; color: #fff; font-weight: 500;';
+      btn.appendChild(name);
+
+      // Price
+      const price = document.createElement('span');
+      price.textContent = `$${veg.cost}`;
+      price.style.cssText = 'font-size: 10px; color: #4caf50; font-weight: bold;';
+      btn.appendChild(price);
 
       btn.addEventListener('click', () => {
         this.selectedVegetation = veg.key;
@@ -588,7 +604,8 @@ export class BuilderScene extends Phaser.Scene {
 
       vegGrid.appendChild(btn);
     }
-    this.vegetationPickerContainer.appendChild(vegGrid);
+    vegScroll.appendChild(vegGrid);
+    this.vegetationPickerContainer.appendChild(vegScroll);
     this.terrainPalette.appendChild(this.vegetationPickerContainer);
 
     // Hole controls container
@@ -757,8 +774,10 @@ export class BuilderScene extends Phaser.Scene {
     const buttons = this.vegetationPickerContainer.querySelectorAll('button');
     buttons.forEach((btn) => {
       const vegKey = (btn as HTMLButtonElement).dataset.vegKey;
-      (btn as HTMLButtonElement).style.borderColor = vegKey === this.selectedVegetation ? '#6bbf5e' : 'transparent';
-      (btn as HTMLButtonElement).style.background = vegKey === this.selectedVegetation ? '#3d5c33' : '#333';
+      const isSelected = vegKey === this.selectedVegetation;
+      (btn as HTMLButtonElement).style.borderColor = isSelected ? '#6bbf5e' : 'transparent';
+      (btn as HTMLButtonElement).style.background = isSelected ? '#3d5c33' : '#2a2a2a';
+      (btn as HTMLButtonElement).style.boxShadow = isSelected ? '0 0 8px rgba(107, 191, 94, 0.4)' : 'none';
     });
   }
 
