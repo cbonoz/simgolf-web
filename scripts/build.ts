@@ -1,17 +1,16 @@
-import { build } from "bun";
 import { mkdir, cp, writeFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 const outDir = "dist";
 const publicDir = "public";
 
-async function main() {
+export async function buildProject(): Promise<void> {
   console.log("[build] Cleaning output directory...");
   await Bun.$`rm -rf ${outDir}`;
   await mkdir(outDir, { recursive: true });
 
   console.log("[build] Bundling TypeScript...");
-  const result = await build({
+  const result = await Bun.build({
     entrypoints: ["src/main.ts"],
     outdir: outDir,
     target: "browser",
@@ -23,7 +22,7 @@ async function main() {
 
   if (!result.success) {
     console.error("[build] Bundle failed:", result.logs);
-    process.exit(1);
+    throw new Error("Build failed");
   }
 
   console.log("[build] Copying public assets...");
@@ -56,8 +55,9 @@ async function main() {
 </body>
 </html>`;
   await writeFile(join(outDir, "index.html"), html);
-
-  console.log("[build] Done. Output in dist/");
 }
 
-main();
+if (import.meta.main) {
+  await buildProject();
+  console.log("[build] Done. Output in dist/");
+}

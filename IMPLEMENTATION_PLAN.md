@@ -94,7 +94,7 @@ simgolf-web/
 
 | Choice | Why |
 |--------|-----|
-| **Bun + TypeScript** | Fast dev server, bundling, and TS transpilation |
+| **Bun + TypeScript** | Package manager, dev server (`Bun.serve`), bundler (`Bun.build`) |
 | **Phaser 3** | Isometric tilemap support, sprites, scene management, camera, input — handles the hard parts of isometric rendering |
 | **Zustand** | Economy + game state that Phaser doesn't own. Lightweight, no boilerplate |
 | **No React** | Phaser owns the canvas. Minimal UI is plain HTML/CSS overlays positioned over the game. No virtual dom overhead for what's essentially a few HUD elements |
@@ -298,7 +298,7 @@ All textures generated in BootScene using Phaser's `Graphics` → `generateTextu
 ## Milestone Breakdown
 
 ### M1: Iso Grid & Rendering (Week 1-2)
-- [ ] Phaser 3 + Bun + TypeScript project scaffold
+- [x] Phaser 3 + Bun + TypeScript project scaffold
 - [ ] BootScene: generate procedural tile textures
 - [ ] Isometric tilemap: 40×30 diamond grid rendering
 - [ ] IsoTransform: screen ↔ tile coordinate conversion
