@@ -58,20 +58,27 @@ export class BuilderScene extends Phaser.Scene {
   private readonly OFFSET_X = (GRID_ROWS - 1) * (TILE_WIDTH / 2) + 100;
   private readonly OFFSET_Y = 100;
 
+  // Camera rotation (0=0°, 1=90° CW, 2=180°, 3=270° CW)
+  private cameraRotation = 0;
+  private gridCenterWorld = { x: 0, y: 0 };
+
   constructor() {
     super({ key: 'BuilderScene' });
   }
 
   create(): void {
-    // Center camera on the grid
-    const topLeft = this.tileToWorld(0, 0);
-    const bottomRight = this.tileToWorld(GRID_COLS - 1, GRID_ROWS - 1);
-    const gridCenterX = (topLeft.x + bottomRight.x) / 2;
-    const gridCenterY = (topLeft.y + bottomRight.y) / 2;
+    // Compute grid center for rotation pivot (use unrotated projection)
+    const centerCol = (GRID_COLS - 1) / 2;
+    const centerRow = (GRID_ROWS - 1) / 2;
+    this.gridCenterWorld = {
+      x: (centerCol - centerRow) * (TILE_WIDTH / 2) + this.OFFSET_X,
+      y: (centerCol + centerRow) * (TILE_HEIGHT / 2) + this.OFFSET_Y,
+    };
 
+    // Center camera on the grid
     const cam = this.cameras.main;
-    cam.scrollX = gridCenterX - cam.width / 2;
-    cam.scrollY = gridCenterY - cam.height / 2;
+    cam.scrollX = this.gridCenterWorld.x - cam.width / 2;
+    cam.scrollY = this.gridCenterWorld.y - cam.height / 2;
 
     // Prevent right-click context menu so we can use right-drag for panning
     this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -98,6 +105,10 @@ export class BuilderScene extends Phaser.Scene {
     // Keyboard
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
+
+      // Camera rotation (Q = CCW, E = CW)
+      this.input.keyboard.on('keydown-Q', () => this.rotateCamera(-1));
+      this.input.keyboard.on('keydown-E', () => this.rotateCamera(1));
     }
 
     this.createUI();
@@ -112,8 +123,51 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   private worldToTile(worldX: number, worldY: number): { col: number; row: number } {
-    const result = screenToTile(worldX, worldY, this.OFFSET_X, this.OFFSET_Y);
+    // Rotate pointer coordinates by -cameraRotation to undo camera rotation
+    const rotated = this.rotateCCW(worldX, worldY, this.gridCenterWorld.x, this.gridCenterWorld.y, this.cameraRotation);
+    const result = screenToTile(rotated.x, rotated.y, this.OFFSET_X, this.OFFSET_Y);
     return clampTile(result.col, result.row, GRID_COLS, GRID_ROWS);
+  }
+
+  // Rotate a point (x, y) around (cx, cy) by quarters * 90° clockwise
+  private rotateCW(x: number, y: number, cx: number, cy: number, quarters: number): { x: number; y: number } {
+    let relX = x - cx;
+    let relY = y - cy;
+    for (let i = 0; i < quarters; i++) {
+      const newX = relY;
+      const newY = -relX;
+      relX = newX;
+      relY = newY;
+    }
+    return { x: relX + cx, y: relY + cy };
+  }
+
+  // Rotate a point (x, y) around (cx, cy) by quarters * 90° counter-clockwise
+  private rotateCCW(x: number, y: number, cx: number, cy: number, quarters: number): { x: number; y: number } {
+    let relX = x - cx;
+    let relY = y - cy;
+    for (let i = 0; i < quarters; i++) {
+      const newX = -relY;
+      const newY = relX;
+      relX = newX;
+      relY = newY;
+    }
+    return { x: relX + cx, y: relY + cy };
+  }
+
+  private rotateCamera(delta: number): void {
+    this.cameraRotation = ((this.cameraRotation + delta) % 4 + 4) % 4;
+    this.cameras.main.setRotation((this.cameraRotation * Math.PI) / 2);
+    this.updateHelpText();
+  }
+
+  private updateHelpText(): void {
+    const rotLabel = ['North', 'East', 'South', 'West'][this.cameraRotation];
+    if (this.builderMode === 'paint') {
+      this.helpText.textContent = `Left-click: Paint | Scroll: Zoom | Right-drag: Pan | Q/E: Rotate (${rotLabel}) | Ctrl+Z: Undo`;
+    } else {
+      this.helpText.textContent = `Left-click: Place tee/cup | Scroll: Zoom | Right-drag: Pan | Q/E: Rotate (${rotLabel}) | Ctrl+Z: Undo`;
+    }
   }
 
   private createGrid(): void {
@@ -667,12 +721,11 @@ export class BuilderScene extends Phaser.Scene {
     if (this.builderMode === 'paint') {
       this.terrainButtonsContainer.style.display = 'flex';
       this.holeControlsContainer.style.display = 'none';
-      this.helpText.textContent = 'Left-click: Paint | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     } else {
       this.terrainButtonsContainer.style.display = 'none';
       this.holeControlsContainer.style.display = 'flex';
-      this.helpText.textContent = 'Left-click: Place tee/cup | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     }
+    this.updateHelpText();
   }
 
   private updateHoleButtonSelection(): void {
