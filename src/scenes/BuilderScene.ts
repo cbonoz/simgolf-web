@@ -106,7 +106,9 @@ export class BuilderScene extends Phaser.Scene {
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
 
-      // Camera rotation (Q = CCW, E = CW)
+      // Camera rotation (Insert = CCW, Delete = CW — SimGolf style; also Q/E)
+      this.input.keyboard.on('keydown-INSERT', () => this.rotateCamera(-1));
+      this.input.keyboard.on('keydown-DELETE', () => this.rotateCamera(1));
       this.input.keyboard.on('keydown-Q', () => this.rotateCamera(-1));
       this.input.keyboard.on('keydown-E', () => this.rotateCamera(1));
     }
@@ -157,8 +159,24 @@ export class BuilderScene extends Phaser.Scene {
 
   private rotateCamera(delta: number): void {
     this.cameraRotation = ((this.cameraRotation + delta) % 4 + 4) % 4;
-    this.cameras.main.setRotation((this.cameraRotation * Math.PI) / 2);
+    const radians = (this.cameraRotation * Math.PI) / 2;
+
+    // Rotate the camera (changes the viewing angle of the grid)
+    this.cameras.main.setRotation(radians);
+
+    // Counter-rotate entity sprites so they stay visually upright on screen
+    this.syncSpriteRotations();
     this.updateHelpText();
+  }
+
+  private syncSpriteRotations(): void {
+    const radians = (this.cameraRotation * Math.PI) / 2;
+    const counterRotation = -radians;
+
+    // Entity sprites stay upright
+    this.vegetationOverlaySprites.forEach((s) => s.setRotation(counterRotation));
+    this.teeSprites.forEach((s) => s.setRotation(counterRotation));
+    this.flagSprites.forEach((s) => s.setRotation(counterRotation));
   }
 
   private updateHelpText(): void {
@@ -205,6 +223,7 @@ export class BuilderScene extends Phaser.Scene {
     plant.setScale(0.55);
     plant.setDepth(9999);
     this.vegetationOverlaySprites.set(key, plant);
+    this.syncSpriteRotations();
   }
 
   private removeVegetationOverlay(col: number, row: number): void {
@@ -232,6 +251,7 @@ export class BuilderScene extends Phaser.Scene {
         }
       }
     }
+    this.syncSpriteRotations();
     this.updateMoneyDisplay();
   }
 
@@ -530,6 +550,7 @@ export class BuilderScene extends Phaser.Scene {
         this.flagSprites.set(`flag_${hole.id}`, sprite);
       }
     }
+    this.syncSpriteRotations();
   }
 
   private createUI(): void {
