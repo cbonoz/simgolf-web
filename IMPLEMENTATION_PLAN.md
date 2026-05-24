@@ -49,10 +49,12 @@ The MVP strips SimGolf to its **core loop**: build a 9-hole course, watch golfer
 simgolf-web/
 ├── index.html                  # Entry point
 ├── package.json
-├── vite.config.ts
+├── scripts/
+│   ├── build.ts                # Bun production build script
+│   └── dev-server.ts           # Bun dev server with TS transpile
 ├── public/
 │   └── assets/
-│       └── tilesprites.ts       # Procedurally generated tile sprites (Phaser textures)
+│       └── sprites/             # External sprite assets (isometric plants, etc.)
 ├── src/
 │   ├── main.ts                 # Phaser game config + boot
 │   ├── scenes/
@@ -92,7 +94,7 @@ simgolf-web/
 
 | Choice | Why |
 |--------|-----|
-| **Vite + TypeScript** | Fast dev server, strict types catch sim bugs |
+| **Bun + TypeScript** | Fast dev server, bundling, and TS transpilation |
 | **Phaser 3** | Isometric tilemap support, sprites, scene management, camera, input — handles the hard parts of isometric rendering |
 | **Zustand** | Economy + game state that Phaser doesn't own. Lightweight, no boilerplate |
 | **No React** | Phaser owns the canvas. Minimal UI is plain HTML/CSS overlays positioned over the game. No virtual dom overhead for what's essentially a few HUD elements |
@@ -296,7 +298,7 @@ All textures generated in BootScene using Phaser's `Graphics` → `generateTextu
 ## Milestone Breakdown
 
 ### M1: Iso Grid & Rendering (Week 1-2)
-- [ ] Phaser 3 + Vite + TypeScript project scaffold
+- [ ] Phaser 3 + Bun + TypeScript project scaffold
 - [ ] BootScene: generate procedural tile textures
 - [ ] Isometric tilemap: 40×30 diamond grid rendering
 - [ ] IsoTransform: screen ↔ tile coordinate conversion
@@ -377,7 +379,7 @@ The #1 thing that makes SimGolf fun is **watching golfers struggle**. If the AI 
 
 ```bash
 # Setup
-bun create vite@latest simgolf-web -- --template vanilla-ts
+bun init -y simgolf-web
 cd simgolf-web
 bun add phaser zustand
 
@@ -390,4 +392,4 @@ First milestone: get an isometric grid rendering with mouse-to-tile coordinate d
 ---
 
 *Updated 2026-04-14. Repo: github.com/cbonoz/simgolf-web*
-*Framework: Phaser 3 + TypeScript + Vite + Zustand*
+*Framework: Phaser 3 + TypeScript + Bun + Zustand*

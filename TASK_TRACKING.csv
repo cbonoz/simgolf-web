@@ -19,4 +19,3 @@ ID,Milestone,Task,Status,Notes
 18,M4 - Economy & Day Cycle,Day/night cycle with Phaser timeScale,pending,1 real second = 1 game minute at 1x. Day phases: morning (6-10), peak (10-18), evening (18-20), night (20-6). Time controls: pause, 1x, 2x, 5x buttons.
 19,M4 - Economy & Day Cycle,DaySummaryScene overlay,pending,At night: show modal with golfers served, revenue, expenses, profit, reputation change. 'Continue to Builder' button switches back to BuilderScene.
 20,M5 - Polish & Juice,Golfer reaction animations,pending,Celebration: scale bounce + green flash on good putt. Frustration: red tint + shake on water/tree hit. Brief thought bubble before swing.
-21,M5 - Polish & Juice,Deploy to GitHub Pages,pending,Build with `bunx vite build`, configure base path, push dist/ to gh-pages branch or use GitHub Action.

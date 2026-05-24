@@ -4,13 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bunx --bun vite",
-    "build": "bunx --bun vite build",
-    "preview": "bunx --bun vite preview"
+    "dev": "bun run scripts/dev-server.ts",
+    "build": "bun run scripts/build.ts",
+    "preview": "bun run scripts/build.ts && bun run scripts/dev-server.ts"
   },
   "devDependencies": {
-    "typescript": "^6.0.2",
-    "vite": "^8.0.4"
+    "typescript": "^6.0.2"
   },
   "dependencies": {
     "phaser": "^4.0.0",

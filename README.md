@@ -17,8 +17,7 @@ A browser-based isometric golf course management sim inspired by Sid Meier's Sim
 
 - **Phaser 3** — Isometric tilemap rendering, sprites, camera, input
 - **TypeScript** — Strict types to keep the sim honest
-- **Bun** — Package manager and fast builds
-- **Vite** — Dev server and bundler
+- **Bun** — Package manager, dev server, and bundler
 - **Zustand** — Lightweight state for economy, reputation, AI
 
 ## Setup
