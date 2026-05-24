@@ -56,5 +56,19 @@ export class TitleScene extends Phaser.Scene {
       color: '#888888',
     });
     instructions.setOrigin(0.5);
+
+    // GitHub link
+    const github = this.add.text(width / 2, height - 30, 'View on GitHub', {
+      fontSize: '12px',
+      fontFamily: 'sans-serif',
+      color: '#666666',
+    });
+    github.setOrigin(0.5);
+    github.setInteractive({ useHandCursor: true });
+    github.on('pointerover', () => github.setColor('#4caf50'));
+    github.on('pointerout', () => github.setColor('#666666'));
+    github.on('pointerdown', () => {
+      window.open('https://github.com/cbonoz/simgolf-web', '_blank');
+    });
   }
 }

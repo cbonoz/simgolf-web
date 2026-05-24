@@ -17,14 +17,15 @@ A browser-based isometric golf course management sim inspired by Sid Meier's Sim
 
 - **Phaser 3** — Isometric tilemap rendering, sprites, camera, input
 - **TypeScript** — Strict types to keep the sim honest
-- **Vite** — Fast dev server and builds
+- **Bun** — Package manager and fast builds
+- **Vite** — Dev server and bundler
 - **Zustand** — Lightweight state for economy, reputation, AI
 
 ## Setup
 
 ```bash
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 Open `http://localhost:5173` and start building.
@@ -51,6 +52,23 @@ src/
 - [ ] M5: Polish & juice
 
 See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for full details.
+
+## Art & Assets
+
+All in-game sprites are currently generated procedurally at runtime (see `BootScene.ts`). To upgrade to external art, assets can be sourced from free/open collections. Integrate them by loading PNGs in `preload()` and referencing the keys in scene code.
+
+### Recommended Free Asset Sources
+
+- **[OpenGameArt.org](https://opengameart.org)** — Community-contributed sprites, tilesets, and textures under CC0/CC-BY licenses
+- **[Kenney.nl](https://kenney.nl/assets)** — High-quality free game asset packs (CC0)
+- **[itch.io](https://itch.io/game-assets/free)** — Free and paid asset packs from indie creators
+
+### Searching Tips
+
+When looking for sprites, use search terms like:
+- `isometric tree`, `isometric bush`, `isometric terrain`
+- `golf course`, `isometric grass`, `isometric sand`
+- Filter by license: prioritize **CC0** (no attribution) or **CC-BY** (attribution required)
 
 ## License
 

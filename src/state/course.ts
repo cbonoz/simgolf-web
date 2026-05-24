@@ -22,6 +22,10 @@ export interface CourseState {
   setTile: (col: number, row: number, type: TerrainType) => void;
   setTee: (holeId: number, col: number, row: number) => void;
   setCup: (holeId: number, col: number, row: number) => void;
+  setPar: (holeId: number, par: number) => void;
+  clearHole: (holeId: number) => void;
+  saveCourse: () => void;
+  loadCourse: () => boolean;
   addMoney: (amount: number) => void;
   spendMoney: (amount: number) => boolean;
   getTile: (col: number, row: number) => Tile;
@@ -98,6 +102,60 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       grid[row][col] = { ...grid[row][col], isCup: true, hole: holeId };
       return { holes, grid };
     }),
+
+  setPar: (holeId, par) =>
+    set((state) => ({
+      holes: state.holes.map((h) =>
+        h.id === holeId ? { ...h, par } : h
+      ),
+    })),
+
+  clearHole: (holeId) =>
+    set((state) => {
+      const holes = state.holes.map((h) =>
+        h.id === holeId ? { ...h, tee: null, cup: null, par: 3 } : h
+      );
+      const grid = state.grid.map((r) =>
+        r.map((tile) => {
+          if (tile.hole === holeId) {
+            return { ...tile, isTee: false, isCup: false, hole: null };
+          }
+          return tile;
+        })
+      );
+      return { holes, grid };
+    }),
+
+  saveCourse: () => {
+    const state = get();
+    try {
+      localStorage.setItem('simgolf_course_v1', JSON.stringify({
+        grid: state.grid,
+        holes: state.holes,
+        money: state.money,
+        savedAt: new Date().toISOString(),
+      }));
+    } catch (e) {
+      console.warn('Failed to save course:', e);
+    }
+  },
+
+  loadCourse: () => {
+    try {
+      const raw = localStorage.getItem('simgolf_course_v1');
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      set({
+        grid: data.grid,
+        holes: data.holes,
+        money: data.money,
+      });
+      return true;
+    } catch (e) {
+      console.warn('Failed to load course:', e);
+      return false;
+    }
+  },
 
   addMoney: (amount) =>
     set((state) => ({ money: state.money + amount })),

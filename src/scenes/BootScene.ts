@@ -7,7 +7,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // No external assets
+    this.load.image('tree_birch', 'assets/sprites/tree_birch.png');
+    this.load.spritesheet('golfers', 'assets/sprites/golfers.png', { frameWidth: 16, frameHeight: 16 });
   }
 
   create(): void {

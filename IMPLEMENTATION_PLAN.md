@@ -377,13 +377,12 @@ The #1 thing that makes SimGolf fun is **watching golfers struggle**. If the AI 
 
 ```bash
 # Setup
-npm create vite@latest simgolf-web -- --template vanilla-ts
+bun create vite@latest simgolf-web -- --template vanilla-ts
 cd simgolf-web
-npm install phaser zustand
-npm install -D @types/phaser
+bun add phaser zustand
 
 # Start building M1
-npm run dev
+bun run dev
 ```
 
 First milestone: get an isometric grid rendering with mouse-to-tile coordinate detection. The rest builds on that foundation.
