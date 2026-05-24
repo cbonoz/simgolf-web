@@ -31,6 +31,7 @@ export class BuilderScene extends Phaser.Scene {
   private vegetationOverlaySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private selectedVegetation: string = VEGETATION_TYPES[0].key;
   private vegetationPickerContainer!: HTMLDivElement;
+  private vegetationSidePanel!: HTMLDivElement | null = null;
   private modeButtons: HTMLButtonElement[] = [];
   private holeButtons: HTMLButtonElement[] = [];
   private holeStatusDisplay!: HTMLDivElement;
@@ -546,66 +547,23 @@ export class BuilderScene extends Phaser.Scene {
     }
     this.terrainPalette.appendChild(this.terrainButtonsContainer);
 
-    // Vegetation picker (shown when Trees is selected)
+    // Compact "Current Plant" indicator inside the builder panel
     this.vegetationPickerContainer = document.createElement('div');
     this.vegetationPickerContainer.style.cssText =
       'display: none; flex-direction: column; gap: 6px; margin-top: 4px; padding-top: 8px; border-top: 1px solid #555;';
 
-    const vegLabel = document.createElement('div');
-    vegLabel.textContent = '🌿 Select Plant';
-    vegLabel.style.cssText = 'color: #fff; font-size: 13px; font-weight: bold;';
-    this.vegetationPickerContainer.appendChild(vegLabel);
+    const currentLabel = document.createElement('div');
+    currentLabel.textContent = '🌿 Current Plant';
+    currentLabel.style.cssText = 'color: #aaa; font-size: 11px;';
+    this.vegetationPickerContainer.appendChild(currentLabel);
 
-    // Scrollable grid container
-    const vegScroll = document.createElement('div');
-    vegScroll.style.cssText = 'max-height: 340px; overflow-y: auto; padding-right: 4px;';
+    const currentPreview = document.createElement('div');
+    currentPreview.id = 'veg-current-preview';
+    currentPreview.style.cssText =
+      'display: flex; align-items: center; gap: 8px; padding: 6px; background: #2a2a2a; border-radius: 4px; cursor: pointer;';
+    currentPreview.addEventListener('click', () => this.showVegetationSidePanel());
+    this.vegetationPickerContainer.appendChild(currentPreview);
 
-    const vegGrid = document.createElement('div');
-    vegGrid.style.cssText = 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;';
-
-    for (const veg of VEGETATION_TYPES) {
-      const btn = document.createElement('button');
-      btn.dataset.vegKey = veg.key;
-      btn.title = `${veg.name} — $${veg.cost}`;
-      btn.style.cssText = `
-        display: flex; flex-direction: column; align-items: center; gap: 4px;
-        padding: 8px 4px; border: 2px solid transparent; border-radius: 6px;
-        cursor: pointer; font-size: 11px; background: #2a2a2a; color: #fff;
-        min-height: 110px;
-      `;
-
-      // Light backdrop for the sprite so it pops against dark UI
-      const imgBox = document.createElement('div');
-      imgBox.style.cssText =
-        'width: 64px; height: 64px; background: #e8e8e8; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden;';
-
-      const img = document.createElement('img');
-      img.src = `assets/sprites/isometric-plants/${veg.key}.png`;
-      img.style.cssText = 'width: 56px; height: 56px; object-fit: contain;';
-      imgBox.appendChild(img);
-      btn.appendChild(imgBox);
-
-      // Name
-      const name = document.createElement('span');
-      name.textContent = veg.name;
-      name.style.cssText = 'font-size: 11px; color: #fff; font-weight: 500;';
-      btn.appendChild(name);
-
-      // Price
-      const price = document.createElement('span');
-      price.textContent = `$${veg.cost}`;
-      price.style.cssText = 'font-size: 10px; color: #4caf50; font-weight: bold;';
-      btn.appendChild(price);
-
-      btn.addEventListener('click', () => {
-        this.selectedVegetation = veg.key;
-        this.updateVegetationPickerSelection();
-      });
-
-      vegGrid.appendChild(btn);
-    }
-    vegScroll.appendChild(vegGrid);
-    this.vegetationPickerContainer.appendChild(vegScroll);
     this.terrainPalette.appendChild(this.vegetationPickerContainer);
 
     // Hole controls container
@@ -767,18 +725,175 @@ export class BuilderScene extends Phaser.Scene {
       this.vegetationPickerContainer.style.display = 'flex';
     } else {
       this.vegetationPickerContainer.style.display = 'none';
+      this.hideVegetationSidePanel();
     }
   }
 
   private updateVegetationPickerSelection(): void {
-    const buttons = this.vegetationPickerContainer.querySelectorAll('button');
-    buttons.forEach((btn) => {
-      const vegKey = (btn as HTMLButtonElement).dataset.vegKey;
-      const isSelected = vegKey === this.selectedVegetation;
-      (btn as HTMLButtonElement).style.borderColor = isSelected ? '#6bbf5e' : 'transparent';
-      (btn as HTMLButtonElement).style.background = isSelected ? '#3d5c33' : '#2a2a2a';
-      (btn as HTMLButtonElement).style.boxShadow = isSelected ? '0 0 8px rgba(107, 191, 94, 0.4)' : 'none';
+    // Update the compact preview inside the builder panel
+    const preview = this.vegetationPickerContainer.querySelector('#veg-current-preview') as HTMLDivElement;
+    if (!preview) return;
+
+    const veg = VEGETATION_TYPES.find((v) => v.key === this.selectedVegetation);
+    if (!veg) return;
+
+    preview.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = `assets/sprites/isometric-plants/${veg.key}.png`;
+    img.style.cssText = 'width: 32px; height: 32px; object-fit: contain;';
+    preview.appendChild(img);
+
+    const info = document.createElement('div');
+    info.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+    const name = document.createElement('span');
+    name.textContent = veg.name;
+    name.style.cssText = 'font-size: 11px; color: #fff; font-weight: 500;';
+    info.appendChild(name);
+    const price = document.createElement('span');
+    price.textContent = `$${veg.cost}`;
+    price.style.cssText = 'font-size: 10px; color: #4caf50;';
+    info.appendChild(price);
+    preview.appendChild(info);
+
+    const hint = document.createElement('span');
+    hint.textContent = '▶';
+    hint.style.cssText = 'margin-left: auto; font-size: 10px; color: #888;';
+    preview.appendChild(hint);
+  }
+
+  private showVegetationSidePanel(): void {
+    if (this.vegetationSidePanel) return;
+
+    const panel = document.createElement('div');
+    panel.id = 'veg-side-panel';
+    panel.style.cssText = `
+      position: fixed; top: 10px; left: 190px; z-index: 101;
+      background: rgba(0,0,0,0.9); border-radius: 8px; padding: 12px;
+      display: flex; flex-direction: column; gap: 8px; font-family: sans-serif;
+      width: 280px; max-height: calc(100vh - 20px);
+    `;
+
+    // Header with close button
+    const header = document.createElement('div');
+    header.style.cssText = 'display: flex; justify-content: space-between; align-items: center;';
+
+    const title = document.createElement('div');
+    title.textContent = '🌿 Select Plant';
+    title.style.cssText = 'color: #fff; font-size: 14px; font-weight: bold;';
+    header.appendChild(title);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'background: none; border: none; color: #aaa; font-size: 16px; cursor: pointer;';
+    closeBtn.addEventListener('click', () => this.hideVegetationSidePanel());
+    header.appendChild(closeBtn);
+
+    panel.appendChild(header);
+
+    // Category filter tabs
+    const categories = [...new Set(VEGETATION_TYPES.map((v) => v.category))];
+    const tabs = document.createElement('div');
+    tabs.style.cssText = 'display: flex; gap: 4px; flex-wrap: wrap;';
+
+    let activeCategory = 'All';
+    const filterButtons: HTMLButtonElement[] = [];
+
+    const allBtn = document.createElement('button');
+    allBtn.textContent = 'All';
+    allBtn.style.cssText = 'padding: 4px 10px; border-radius: 12px; border: none; cursor: pointer; font-size: 11px; background: #4a8f3f; color: #fff;';
+    filterButtons.push(allBtn);
+    tabs.appendChild(allBtn);
+
+    for (const cat of categories) {
+      const btn = document.createElement('button');
+      btn.textContent = cat;
+      btn.style.cssText = 'padding: 4px 10px; border-radius: 12px; border: none; cursor: pointer; font-size: 11px; background: #444; color: #ccc;';
+      filterButtons.push(btn);
+      tabs.appendChild(btn);
+    }
+
+    allBtn.addEventListener('click', () => {
+      activeCategory = 'All';
+      updateFilter();
     });
+    for (let i = 1; i < filterButtons.length; i++) {
+      filterButtons[i].addEventListener('click', () => {
+        activeCategory = categories[i - 1];
+        updateFilter();
+      });
+    }
+
+    panel.appendChild(tabs);
+
+    // Grid container
+    const gridContainer = document.createElement('div');
+    gridContainer.style.cssText = 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; overflow-y: auto;';
+    panel.appendChild(gridContainer);
+
+    const updateFilter = () => {
+      // Update tab styles
+      filterButtons.forEach((btn, i) => {
+        const cat = i === 0 ? 'All' : categories[i - 1];
+        const isActive = cat === activeCategory;
+        btn.style.background = isActive ? '#4a8f3f' : '#444';
+        btn.style.color = isActive ? '#fff' : '#ccc';
+      });
+
+      // Rebuild grid
+      gridContainer.innerHTML = '';
+      const filtered = activeCategory === 'All'
+        ? VEGETATION_TYPES
+        : VEGETATION_TYPES.filter((v) => v.category === activeCategory);
+
+      for (const veg of filtered) {
+        const btn = document.createElement('button');
+        btn.dataset.vegKey = veg.key;
+        const isSel = veg.key === this.selectedVegetation;
+        btn.style.cssText = `
+          display: flex; flex-direction: column; align-items: center; gap: 3px;
+          padding: 6px 2px; border: 2px solid ${isSel ? '#6bbf5e' : 'transparent'};
+          border-radius: 6px; cursor: pointer; font-size: 10px;
+          background: ${isSel ? '#3d5c33' : '#2a2a2a'}; color: #fff;
+        `;
+
+        const imgBox = document.createElement('div');
+        imgBox.style.cssText = 'width: 52px; height: 52px; background: #e8e8e8; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden;';
+        const img = document.createElement('img');
+        img.src = `assets/sprites/isometric-plants/${veg.key}.png`;
+        img.style.cssText = 'width: 44px; height: 44px; object-fit: contain;';
+        imgBox.appendChild(img);
+        btn.appendChild(imgBox);
+
+        const name = document.createElement('span');
+        name.textContent = veg.name;
+        name.style.cssText = 'font-size: 10px; color: #fff;';
+        btn.appendChild(name);
+
+        const price = document.createElement('span');
+        price.textContent = `$${veg.cost}`;
+        price.style.cssText = 'font-size: 9px; color: #4caf50; font-weight: bold;';
+        btn.appendChild(price);
+
+        btn.addEventListener('click', () => {
+          this.selectedVegetation = veg.key;
+          this.updateVegetationPickerSelection();
+          this.hideVegetationSidePanel();
+        });
+
+        gridContainer.appendChild(btn);
+      }
+    };
+
+    updateFilter();
+    document.body.appendChild(panel);
+    this.vegetationSidePanel = panel;
+  }
+
+  private hideVegetationSidePanel(): void {
+    if (this.vegetationSidePanel) {
+      this.vegetationSidePanel.remove();
+      this.vegetationSidePanel = null;
+    }
   }
 
   private updateMoneyDisplay(): void {
@@ -803,6 +918,7 @@ export class BuilderScene extends Phaser.Scene {
     this.flagSprites.forEach((s) => s.destroy());
     this.vegetationOverlaySprites.forEach((s) => s.destroy());
     this.vegetationOverlaySprites.clear();
+    this.hideVegetationSidePanel();
     this.terrainPalette?.remove();
     this.moneyDisplay?.remove();
     this.helpText?.remove();
