@@ -1465,6 +1465,12 @@ export class BuilderScene extends Phaser.Scene {
   private transitionToNextHole(golfer: Golfer): void {
     const store = courseStore.getState();
 
+    // Greens fee per hole (base $5 + par bonus)
+    const hole = store.holes.find((h) => h.id === golfer.currentHole);
+    const par = hole?.par ?? 3;
+    const greensFee = 5 + par; // $8 for par-3, $9 for par-4, $10 for par-5
+    store.addMoney(greensFee);
+
     const scorecard = [...golfer.scorecard, golfer.strokes];
     const newTotal = golfer.totalStrokes + golfer.strokes;
 
@@ -1480,8 +1486,8 @@ export class BuilderScene extends Phaser.Scene {
         onCourse: false,
       });
 
-      const revenue = 20 + Math.round(golfer.skill * 30);
-      store.addMoney(revenue);
+      const roundRevenue = 20 + Math.round(golfer.skill * 30);
+      store.addMoney(roundRevenue);
 
       const sprite = this.golferSprites.get(golfer.id);
       if (sprite) {
