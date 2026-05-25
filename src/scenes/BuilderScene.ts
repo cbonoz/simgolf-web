@@ -31,7 +31,7 @@ export class BuilderScene extends Phaser.Scene {
   private vegetationOverlaySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private selectedVegetation: string = VEGETATION_TYPES[0].key;
   private vegetationPickerContainer!: HTMLDivElement;
-  private vegetationSidePanel!: HTMLDivElement | null = null;
+  private vegetationSidePanel: HTMLDivElement | null = null;
   private modeButtons: HTMLButtonElement[] = [];
   private holeButtons: HTMLButtonElement[] = [];
   private holeStatusDisplay!: HTMLDivElement;
@@ -649,6 +649,20 @@ export class BuilderScene extends Phaser.Scene {
       this.scene.start('TitleScene');
     });
     this.terrainPalette.appendChild(returnBtn);
+
+    // Open for Play button
+    const openPlayBtn = document.createElement('button');
+    openPlayBtn.textContent = '⛳ Open for Play';
+    openPlayBtn.style.cssText = `
+      margin-top: 4px; padding: 8px; border: 2px solid #2e7d32; border-radius: 4px;
+      cursor: pointer; font-size: 12px; background: #4a8f3f; color: #fff;
+      font-weight: bold;
+    `;
+    openPlayBtn.addEventListener('click', () => {
+      courseStore.getState().saveCourse();
+      this.scene.start('PlayScene');
+    });
+    this.terrainPalette.appendChild(openPlayBtn);
 
     // Download Save button
     const downloadBtn = document.createElement('button');
