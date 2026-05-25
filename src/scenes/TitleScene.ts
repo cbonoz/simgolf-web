@@ -106,7 +106,7 @@ export class TitleScene extends Phaser.Scene {
     });
 
     // Instructions
-    const instructions = this.add.text(width / 2, height / 2 + (hasSave ? 210 : 160), 'Paint terrain → Design 9 holes → Open for play', {
+    const instructions = this.add.text(width / 2, height / 2 + (hasSave ? 210 : 160), 'Build your course while golfers play in real-time!', {
       fontSize: '14px',
       fontFamily: 'sans-serif',
       color: '#888888',

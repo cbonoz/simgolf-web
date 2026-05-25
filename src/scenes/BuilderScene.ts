@@ -1,7 +1,9 @@
 import * as Phaser from 'phaser';
 import { courseStore, Tile, HoleConfig } from '../state/course';
-import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES } from '../utils/constants';
+import { golferStore, Golfer, generateThought } from '../state/golfers';
+import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE } from '../utils/constants';
 import { tileToScreen, screenToTile, clampTile, calculatePar } from '../utils/helpers';
+import { Ball } from '../entities/Ball';
 
 type CourseSnapshot = {
   grid: Tile[][];
@@ -37,6 +39,19 @@ export class BuilderScene extends Phaser.Scene {
   private holeStatusDisplay!: HTMLDivElement;
   private terrainButtonsContainer!: HTMLDivElement;
   private holeControlsContainer!: HTMLDivElement;
+
+  // Golfers (unified build+play)
+  private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
+  private activeBall: Ball | null = null;
+  private spawnTimer = 0;
+  private readonly SPAWN_INTERVAL = 4000; // ms between spawns
+  private readonly MAX_GOLFERS = 8;
+  private timeScale = 1;
+  private scorecardEl!: HTMLDivElement;
+  private timeControlsContainer!: HTMLDivElement;
+  private golferTooltip: HTMLDivElement | null = null;
+  private golferCountDisplay!: HTMLDivElement;
+  private playActive = true; // golfers active by default
 
   // Undo/redo
   private undoStack: CourseSnapshot[] = [];
@@ -105,6 +120,43 @@ export class BuilderScene extends Phaser.Scene {
     this.refreshHoleOverlays();
     if (loaded) this.updateHoleUI();
     document.addEventListener('keydown', this.keydownHandler);
+
+    // Initialize golfers for unified build+play
+    golferStore.getState().resetGolfers();
+    this.spawnInitialGolfers();
+  }
+
+  private spawnInitialGolfers(): void {
+    const store = courseStore.getState();
+    const hole1 = store.holes.find((h) => h.id === 1);
+    if (!hole1?.tee) return;
+    for (let i = 0; i < 3; i++) {
+      this.spawnGolfer();
+    }
+  }
+
+  private spawnGolfer(): Golfer | null {
+    const store = courseStore.getState();
+    const hole1 = store.holes.find((h) => h.id === 1);
+    if (!hole1?.tee) return null;
+
+    const gStore = golferStore.getState();
+    if (gStore.golfers.length >= this.MAX_GOLFERS) return null;
+
+    const golfer = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    if (!golfer) return null;
+
+    const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
+    const sprite = this.add.sprite(pos.x, pos.y - 4, `golfer_${golfer.colorIndex}`);
+    sprite.setOrigin(0.5, 1);
+    sprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row));
+    this.golferSprites.set(golfer.id, sprite);
+
+    return golfer;
+  }
+
+  private getGolferDepth(col: number, row: number): number {
+    return (col + row) * GRID_COLS + col + 0.5;
   }
 
   private tileToWorld(col: number, row: number): { x: number; y: number } {
@@ -118,9 +170,9 @@ export class BuilderScene extends Phaser.Scene {
 
   private updateHelpText(): void {
     if (this.builderMode === 'paint') {
-      this.helpText.textContent = 'Left-click: Paint | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
+      this.helpText.textContent = 'Left-click: Paint | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     } else {
-      this.helpText.textContent = 'Left-click: Place tee/cup | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
+      this.helpText.textContent = 'Left-click: Place tee/cup | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     }
   }
 
@@ -200,6 +252,14 @@ export class BuilderScene extends Phaser.Scene {
         this.panStart = { x: pointer.x, y: pointer.y };
         return; // Don't paint when panning
       }
+
+      // Check if clicking on a golfer (inspect mode)
+      const clickedGolfer = this.findGolferAt(pointer.worldX, pointer.worldY);
+      if (clickedGolfer) {
+        this.showGolferTooltip(clickedGolfer);
+        return;
+      }
+
       // Left click: start painting
       this.isPainting = true;
       this.lastPaintedTile = '';
@@ -650,19 +710,61 @@ export class BuilderScene extends Phaser.Scene {
     });
     this.terrainPalette.appendChild(returnBtn);
 
-    // Open for Play button
-    const openPlayBtn = document.createElement('button');
-    openPlayBtn.textContent = '⛳ Open for Play';
-    openPlayBtn.style.cssText = `
-      margin-top: 4px; padding: 8px; border: 2px solid #2e7d32; border-radius: 4px;
-      cursor: pointer; font-size: 12px; background: #4a8f3f; color: #fff;
-      font-weight: bold;
-    `;
-    openPlayBtn.addEventListener('click', () => {
-      courseStore.getState().saveCourse();
-      this.scene.start('PlayScene');
-    });
-    this.terrainPalette.appendChild(openPlayBtn);
+    // Time controls + golfer info (unified build+play)
+    const playSection = document.createElement('div');
+    playSection.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #555;';
+
+    const playTitle = document.createElement('div');
+    playTitle.textContent = '⛳ Golfers';
+    playTitle.style.cssText = 'color: #fff; font-weight: bold; font-size: 13px;';
+    playSection.appendChild(playTitle);
+
+    // Time controls
+    this.timeControlsContainer = document.createElement('div');
+    this.timeControlsContainer.style.cssText = 'display: flex; gap: 4px;';
+
+    const speeds = [
+      { label: '⏸️', value: 0 },
+      { label: '▶️', value: 1 },
+      { label: '⏩', value: 2 },
+      { label: '⏩⏩', value: 5 },
+    ];
+
+    for (const s of speeds) {
+      const btn = document.createElement('button');
+      btn.textContent = s.label;
+      btn.dataset.speed = String(s.value);
+      btn.style.cssText = `
+        flex: 1; padding: 4px; border: 2px solid transparent; border-radius: 4px;
+        cursor: pointer; font-size: 12px; background: ${s.value === 1 ? '#4a8f3f' : '#444'};
+        color: #fff;
+      `;
+      btn.addEventListener('click', () => {
+        this.timeScale = s.value;
+        this.playActive = s.value > 0;
+        // Update all time buttons
+        const buttons = this.timeControlsContainer.querySelectorAll('button');
+        buttons.forEach((b) => {
+          const speedVal = Number((b as HTMLButtonElement).dataset.speed);
+          (b as HTMLButtonElement).style.background = speedVal === this.timeScale ? '#4a8f3f' : '#444';
+        });
+      });
+      this.timeControlsContainer.appendChild(btn);
+    }
+    playSection.appendChild(this.timeControlsContainer);
+
+    // Golfer count display
+    this.golferCountDisplay = document.createElement('div');
+    this.golferCountDisplay.style.cssText = 'color: #a8d8a8; font-size: 11px;';
+    this.golferCountDisplay.textContent = '0 golfers on course';
+    playSection.appendChild(this.golferCountDisplay);
+
+    // Scorecard
+    this.scorecardEl = document.createElement('div');
+    this.scorecardEl.style.cssText = 'color: #ccc; font-size: 10px; line-height: 1.4; max-height: 120px; overflow-y: auto;';
+    playSection.appendChild(this.scorecardEl);
+
+    this.terrainPalette.appendChild(playSection);
 
     // Download Save button
     const downloadBtn = document.createElement('button');
@@ -1029,14 +1131,383 @@ export class BuilderScene extends Phaser.Scene {
     }
   }
 
-  update(): void {
-    if (!this.cursors) return;
-    const cam = this.cameras.main;
-    const speed = 5;
-    if (this.cursors.left.isDown) cam.scrollX -= speed;
-    if (this.cursors.right.isDown) cam.scrollX += speed;
-    if (this.cursors.up.isDown) cam.scrollY -= speed;
-    if (this.cursors.down.isDown) cam.scrollY += speed;
+  update(time: number, delta: number): void {
+    // Keyboard camera pan
+    if (this.cursors) {
+      const cam = this.cameras.main;
+      const speed = 5;
+      if (this.cursors.left.isDown) cam.scrollX -= speed;
+      if (this.cursors.right.isDown) cam.scrollX += speed;
+      if (this.cursors.up.isDown) cam.scrollY -= speed;
+      if (this.cursors.down.isDown) cam.scrollY += speed;
+    }
+
+    if (!this.playActive) {
+      // Still sync sprite positions when paused
+      this.syncGolferSprites();
+      this.updateScorecard();
+      return;
+    }
+
+    const scaledDelta = delta * this.timeScale;
+
+    // Update ball flight
+    if (this.activeBall) {
+      this.activeBall.update(scaledDelta);
+      if (this.activeBall.complete) {
+        this.activeBall = null;
+      }
+    }
+
+    // Spawn timer
+    this.spawnTimer += scaledDelta;
+    if (this.spawnTimer >= this.SPAWN_INTERVAL) {
+      this.spawnTimer = 0;
+      this.spawnGolfer();
+    }
+
+    // Update each golfer
+    const gStore = golferStore.getState();
+    const store = courseStore.getState();
+
+    for (const golfer of [...gStore.golfers]) {
+      if (golfer.state === 'round_complete') continue;
+
+      golfer.stateTimer -= scaledDelta;
+      if (golfer.stateTimer > 0) continue;
+
+      switch (golfer.state) {
+        case 'addressing':
+          this.transitionToSwinging(golfer);
+          break;
+        case 'swinging':
+          this.executeSwing(golfer);
+          break;
+        case 'ball_flight':
+          break;
+        case 'reacting':
+          this.transitionToNext(golfer);
+          break;
+        case 'walking':
+          this.transitionToAddressing(golfer);
+          break;
+        case 'hole_complete':
+          this.transitionToNextHole(golfer);
+          break;
+      }
+    }
+
+    // Sync sprite positions
+    this.syncGolferSprites();
+
+    // Update UI
+    this.updateScorecard();
+    this.updateGolferCount();
+  }
+
+  private syncGolferSprites(): void {
+    const gStore = golferStore.getState();
+    for (const golfer of gStore.golfers) {
+      const sprite = this.golferSprites.get(golfer.id);
+      if (sprite) {
+        const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
+        sprite.setPosition(pos.x, pos.y - 4);
+        sprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row));
+      }
+    }
+  }
+
+  private updateScorecard(): void {
+    const gStore = golferStore.getState();
+    if (gStore.golfers.length === 0) {
+      this.scorecardEl.innerHTML = '<em>No golfers on course</em>';
+      return;
+    }
+
+    let html = '<table style="border-collapse:collapse;width:100%;"><tr><th style="text-align:left;padding:1px 3px;">#</th><th style="text-align:left;padding:1px 3px;">Hole</th><th style="text-align:left;padding:1px 3px;">Str</th><th style="text-align:left;padding:1px 3px;">Tot</th></tr>';
+    for (const g of gStore.golfers) {
+      const holeLabel = g.currentHole <= 9 ? `H${g.currentHole}` : 'Done';
+      html += `<tr><td style="padding:1px 3px;">${g.id}</td><td style="padding:1px 3px;">${holeLabel}</td><td style="padding:1px 3px;">${g.strokes}</td><td style="padding:1px 3px;">${g.totalStrokes}</td></tr>`;
+    }
+    html += '</table>';
+    this.scorecardEl.innerHTML = html;
+  }
+
+  private updateGolferCount(): void {
+    const gStore = golferStore.getState();
+    const active = gStore.golfers.filter((g) => g.onCourse).length;
+    this.golferCountDisplay.textContent = `${active} golfer${active !== 1 ? 's' : ''} on course`;
+  }
+
+  // === GOLFER CLICK INSPECT ===
+
+  private findGolferAt(worldX: number, worldY: number): Golfer | null {
+    const gStore = golferStore.getState();
+    for (const golfer of gStore.golfers) {
+      const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
+      const dx = worldX - pos.x;
+      const dy = worldY - (pos.y - 4);
+      if (dx * dx + dy * dy < 400) { // ~20px radius
+        return golfer;
+      }
+    }
+    return null;
+  }
+
+  private showGolferTooltip(golfer: Golfer): void {
+    this.hideGolferTooltip();
+
+    const store = courseStore.getState();
+    const thought = generateThought(golfer, store.grid, store.holes);
+
+    const tooltip = document.createElement('div');
+    tooltip.id = 'golfer-tooltip';
+    tooltip.style.cssText = `
+      position: fixed; z-index: 200; background: rgba(0,0,0,0.9); border-radius: 8px;
+      padding: 10px 14px; color: #fff; font-family: sans-serif; font-size: 12px;
+      max-width: 220px; pointer-events: none; line-height: 1.5;
+      border: 1px solid #555;
+    `;
+
+    const name = document.createElement('div');
+    name.textContent = golfer.name;
+    name.style.cssText = 'font-weight: bold; color: #ffcc80; margin-bottom: 4px;';
+    tooltip.appendChild(name);
+
+    const stats = document.createElement('div');
+    stats.style.cssText = 'color: #ccc; font-size: 11px;';
+    stats.innerHTML = `
+      Skill: ${Math.round(golfer.skill * 100)}% | Hole ${golfer.currentHole}<br>
+      Strokes: ${golfer.strokes} | Total: ${golfer.totalStrokes}
+    `;
+    tooltip.appendChild(stats);
+
+    const thoughtEl = document.createElement('div');
+    thoughtEl.textContent = `💭 "${thought}"`;
+    thoughtEl.style.cssText = 'color: #a8d8a8; font-style: italic; margin-top: 6px; font-size: 11px;';
+    tooltip.appendChild(thoughtEl);
+
+    // Position near the golfer sprite
+    const sprite = this.golferSprites.get(golfer.id);
+    if (sprite) {
+      const matrix = sprite.getWorldTransformMatrix();
+      tooltip.style.left = `${matrix.tx + 20}px`;
+      tooltip.style.top = `${matrix.ty - 40}px`;
+    } else {
+      tooltip.style.left = '50%';
+      tooltip.style.top = '50%';
+      tooltip.style.transform = 'translate(-50%, -50%)';
+    }
+
+    document.body.appendChild(tooltip);
+    this.golferTooltip = tooltip;
+
+    // Auto-hide after 3 seconds
+    setTimeout(() => this.hideGolferTooltip(), 3000);
+  }
+
+  private hideGolferTooltip(): void {
+    if (this.golferTooltip) {
+      this.golferTooltip.remove();
+      this.golferTooltip = null;
+    }
+  }
+
+  // === GOLF SIMULATION (from PlayScene) ===
+
+  private transitionToSwinging(golfer: Golfer): void {
+    golferStore.getState().updateGolfer(golfer.id, {
+      state: 'swinging',
+      stateTimer: 400,
+    });
+  }
+
+  private executeSwing(golfer: Golfer): void {
+    const store = courseStore.getState();
+    const hole = store.holes.find((h) => h.id === golfer.currentHole);
+    if (!hole?.cup) {
+      golferStore.getState().updateGolfer(golfer.id, {
+        state: 'hole_complete',
+        stateTimer: 0,
+      });
+      return;
+    }
+
+    const cupPos = hole.cup;
+    const currentPos = golfer.tilePos;
+
+    const dx = cupPos.col - currentPos.col;
+    const dy = cupPos.row - currentPos.row;
+    const distance = Math.abs(dx) + Math.abs(dy);
+
+    let targetDistance = this.pickClubDistance(distance);
+
+    const errorFactor = 1 - golfer.skill;
+    const angleError = (Math.random() - 0.5) * 2 * Math.PI * 0.25 * errorFactor;
+    const distanceError = 1 + (Math.random() - 0.5) * 0.3 * errorFactor;
+
+    targetDistance = Math.round(targetDistance * distanceError);
+    targetDistance = Math.max(1, targetDistance);
+
+    let landingCol: number;
+    let landingRow: number;
+
+    if (distance <= 1) {
+      landingCol = cupPos.col;
+      landingRow = cupPos.row;
+    } else {
+      const angle = Math.atan2(dy, dx) + angleError;
+      landingCol = Math.round(currentPos.col + Math.cos(angle) * targetDistance);
+      landingRow = Math.round(currentPos.row + Math.sin(angle) * targetDistance);
+    }
+
+    const clamped = clampTile(landingCol, landingRow, GRID_COLS, GRID_ROWS);
+    landingCol = clamped.col;
+    landingRow = clamped.row;
+
+    const previousPos = { ...golfer.tilePos };
+
+    golferStore.getState().updateGolfer(golfer.id, {
+      state: 'ball_flight',
+      stateTimer: 600,
+      previousTilePos: previousPos,
+    });
+
+    this.activeBall = new Ball(
+      this,
+      currentPos.col,
+      currentPos.row,
+      landingCol,
+      landingRow,
+      this.OFFSET_X,
+      this.OFFSET_Y,
+      500,
+      () => this.onBallLanded(golfer.id, landingCol, landingRow, previousPos)
+    );
+  }
+
+  private pickClubDistance(distanceToCup: number): number {
+    if (distanceToCup >= 15) return 8;
+    if (distanceToCup >= 10) return 6;
+    if (distanceToCup >= 6) return 4;
+    if (distanceToCup >= 3) return 2;
+    return 1;
+  }
+
+  private onBallLanded(golferId: number, landingCol: number, landingRow: number, previousPos: { col: number; row: number }): void {
+    const gStore = golferStore.getState();
+    const golfer = gStore.golfers.find((g) => g.id === golferId);
+    if (!golfer || golfer.state === 'round_complete') return;
+
+    const store = courseStore.getState();
+    const tile = store.grid[landingRow][landingCol];
+    const hole = store.holes.find((h) => h.id === golfer.currentHole);
+    const cupPos = hole?.cup;
+
+    let newStrokes = golfer.strokes + 1;
+    let newState: 'reacting' | 'hole_complete' = 'reacting';
+    let stateTimer = 400;
+    let newTilePos = { col: landingCol, row: landingRow };
+
+    const effect = TERRAIN_EFFECTS[tile.type];
+
+    if (tile.type === 'water') {
+      newStrokes += 1;
+      newTilePos = previousPos;
+      stateTimer = 800;
+    } else if (tile.type === 'trees') {
+      stateTimer = 600;
+    } else if (tile.type === 'green' && cupPos) {
+      const distToCup = Math.abs(landingCol - cupPos.col) + Math.abs(landingRow - cupPos.row);
+      const puttRange = Math.max(1, Math.round(golfer.skill * 3));
+
+      if (distToCup <= puttRange) {
+        newTilePos = { col: cupPos.col, row: cupPos.row };
+        newState = 'hole_complete';
+        stateTimer = 800;
+      }
+    }
+
+    if (newStrokes >= MAX_STROKES_PER_HOLE) {
+      newState = 'hole_complete';
+      stateTimer = 500;
+    }
+
+    gStore.updateGolfer(golferId, {
+      tilePos: newTilePos,
+      strokes: newStrokes,
+      state: newState,
+      stateTimer,
+    });
+  }
+
+  private transitionToNext(golfer: Golfer): void {
+    const store = courseStore.getState();
+    const hole = store.holes.find((h) => h.id === golfer.currentHole);
+    if (!hole?.cup) return;
+
+    const cupPos = hole.cup;
+    const distToCup = Math.abs(golfer.tilePos.col - cupPos.col) + Math.abs(golfer.tilePos.row - cupPos.row);
+
+    if (distToCup <= 0 || golfer.strokes >= MAX_STROKES_PER_HOLE) {
+      golferStore.getState().updateGolfer(golfer.id, {
+        state: 'hole_complete',
+        stateTimer: 0,
+      });
+    } else {
+      golferStore.getState().updateGolfer(golfer.id, {
+        state: 'addressing',
+        stateTimer: 600,
+      });
+    }
+  }
+
+  private transitionToNextHole(golfer: Golfer): void {
+    const store = courseStore.getState();
+
+    const scorecard = [...golfer.scorecard, golfer.strokes];
+    const newTotal = golfer.totalStrokes + golfer.strokes;
+
+    const nextHoleId = golfer.currentHole + 1;
+    const nextHole = store.holes.find((h) => h.id === nextHoleId);
+
+    if (!nextHole?.tee || nextHoleId > 9) {
+      golferStore.getState().updateGolfer(golfer.id, {
+        scorecard,
+        totalStrokes: newTotal,
+        state: 'round_complete',
+        stateTimer: 0,
+        onCourse: false,
+      });
+
+      const revenue = 20 + Math.round(golfer.skill * 30);
+      store.addMoney(revenue);
+
+      const sprite = this.golferSprites.get(golfer.id);
+      if (sprite) {
+        sprite.destroy();
+        this.golferSprites.delete(golfer.id);
+      }
+      golferStore.getState().removeGolfer(golfer.id);
+      return;
+    }
+
+    golferStore.getState().updateGolfer(golfer.id, {
+      currentHole: nextHoleId,
+      tilePos: { col: nextHole.tee.col, row: nextHole.tee.row },
+      strokes: 0,
+      scorecard,
+      totalStrokes: newTotal,
+      state: 'addressing',
+      stateTimer: 800,
+    });
+  }
+
+  private transitionToAddressing(golfer: Golfer): void {
+    golferStore.getState().updateGolfer(golfer.id, {
+      state: 'addressing',
+      stateTimer: 600,
+    });
   }
 
   shutdown(): void {
@@ -1044,7 +1515,10 @@ export class BuilderScene extends Phaser.Scene {
     this.flagSprites.forEach((s) => s.destroy());
     this.vegetationOverlaySprites.forEach((s) => s.destroy());
     this.vegetationOverlaySprites.clear();
+    this.golferSprites.forEach((s) => s.destroy());
+    this.golferSprites.clear();
     this.hideVegetationSidePanel();
+    this.hideGolferTooltip();
     this.terrainPalette?.remove();
     this.moneyDisplay?.remove();
     this.helpText?.remove();

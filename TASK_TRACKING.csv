@@ -21,3 +21,6 @@ ID,Milestone,Task,Status,Notes
 20,M5 - Polish & Juice,Golfer reaction animations,post_mvp,Celebration: scale bounce + green flash on good putt. Frustration: red tint + shake on water/tree hit. Brief thought bubble before swing.
 21,M5 - Polish & Juice,Sound effects,post_mvp,Club swing, ball splash, hole-in-one cheer, crowd cheer.
 22,M5 - Polish & Juice,Deploy to GitHub Pages,post_mvp,Build with bunx vite build, configure base path, push dist/ to gh-pages branch or use GitHub Action.
+23,M6 - Unified Build+Play,Merge BuilderScene + PlayScene into unified GameScene,completed,Golfers always visible and active while building. No more scene transitions. Removed PlayScene.ts.
+24,M6 - Unified Build+Play,Time controls (pause / 1x / 2x / 5x),completed,Added time control buttons in builder UI. Golfers only update when unpaused. Scaled delta by timeScale.
+25,M6 - Unified Build+Play,Click-to-inspect golfers + thought bubbles,completed,Clicking a golfer shows a tooltip with name, skill, stats, and a thought/reaction based on current state and terrain. Auto-hides after 3s.
