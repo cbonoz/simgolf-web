@@ -180,9 +180,7 @@ export class BuilderScene extends Phaser.Scene {
       walkTarget: { col: hole1.tee.col, row: hole1.tee.row },
     });
 
-    // Offset B slightly so they don't perfectly overlap
-    golferB.tilePos = { col: hole1.tee.col, row: hole1.tee.row };
-
+    // Build sprites at clubhouse position (from golfer tilePos set by spawnGolfer)
     const posA = this.tileToWorld(golferA.tilePos.col, golferA.tilePos.row);
     const posB = this.tileToWorld(golferB.tilePos.col, golferB.tilePos.row);
 
