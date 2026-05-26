@@ -32,6 +32,7 @@ export interface CourseState {
   buildings: PlacedBuilding[];
   courseRecord: number | null; // best total strokes (lower = better)
   courseRecordDate: string | null; // ISO date when record was set
+  completedScores: number[]; // total strokes from all completed rounds
   setTile: (col: number, row: number, type: TerrainType) => void;
   setVegetation: (col: number, row: number, vegetation: string | null) => void;
   setTee: (holeId: number, col: number, row: number) => void;
@@ -54,6 +55,7 @@ export interface CourseState {
   addBuilding: (typeKey: string, col: number, row: number) => void;
   removeBuilding: (col: number, row: number) => void;
   setCourseRecord: (strokes: number, date: string) => void;
+  addCompletedScore: (strokes: number) => void;
 }
 
 export interface CourseSaveData {
@@ -67,6 +69,7 @@ export interface CourseSaveData {
   buildings?: PlacedBuilding[];
   courseRecord?: number | null;
   courseRecordDate?: string | null;
+  completedScores?: number[];
   savedAt: string;
 }
 
@@ -123,6 +126,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   buildings: defaultBuildings(),
   courseRecord: null,
   courseRecordDate: null,
+  completedScores: [],
 
   setTile: (col, row, type) =>
     set((state) => {
@@ -214,6 +218,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         buildings: state.buildings,
         courseRecord: state.courseRecord,
         courseRecordDate: state.courseRecordDate,
+        completedScores: state.completedScores,
         savedAt: new Date().toISOString(),
       }));
     } catch (e) {
@@ -236,6 +241,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         buildings: data.buildings ?? defaultBuildings(),
         courseRecord: data.courseRecord ?? null,
         courseRecordDate: data.courseRecordDate ?? null,
+        completedScores: data.completedScores ?? [],
       });
       return true;
     } catch (e) {
@@ -268,11 +274,12 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       buildings: defaultBuildings(),
       courseRecord: null,
       courseRecordDate: null,
+      completedScores: [],
     });
   },
 
   serialize: () => {
-    const { grid, holes, money, debt, reputation, reputationHistory, buildings, courseRecord, courseRecordDate } = get();
+    const { grid, holes, money, debt, reputation, reputationHistory, buildings, courseRecord, courseRecordDate, completedScores } = get();
     const data: CourseSaveData = {
       version: SAVE_VERSION,
       grid,
@@ -284,6 +291,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       buildings,
       courseRecord,
       courseRecordDate,
+      completedScores,
       savedAt: new Date().toISOString(),
     };
     return JSON.stringify(data);
@@ -305,6 +313,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         buildings: data.buildings ?? defaultBuildings(),
         courseRecord: data.courseRecord ?? null,
         courseRecordDate: data.courseRecordDate ?? null,
+        completedScores: data.completedScores ?? [],
       });
       return true;
     } catch (e) {
@@ -365,4 +374,9 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
 
   setCourseRecord: (strokes, date) =>
     set({ courseRecord: strokes, courseRecordDate: date }),
+
+  addCompletedScore: (strokes) =>
+    set((state) => ({
+      completedScores: [...state.completedScores, strokes],
+    })),
 }));

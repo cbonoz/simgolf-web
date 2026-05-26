@@ -52,6 +52,7 @@ export class BuilderScene extends Phaser.Scene {
   private timeScale = 1;
   private scorecardEl!: HTMLDivElement;
   private courseRecordEl!: HTMLDivElement;
+  private courseAvgEl!: HTMLDivElement;
   private timeControlsContainer!: HTMLDivElement;
   private golferTooltip: HTMLDivElement | null = null;
   private golferCountDisplay!: HTMLDivElement;
@@ -887,6 +888,12 @@ export class BuilderScene extends Phaser.Scene {
     this.courseRecordEl.textContent = '';
     playSection.appendChild(this.courseRecordEl);
 
+    // Course par + average display
+    this.courseAvgEl = document.createElement('div');
+    this.courseAvgEl.style.cssText = 'color: #aaa; font-size: 10px; margin-top: 1px;';
+    this.courseAvgEl.textContent = '';
+    playSection.appendChild(this.courseAvgEl);
+
     // Scorecard
     this.scorecardEl = document.createElement('div');
     this.scorecardEl.style.cssText = 'color: #ccc; font-size: 10px; line-height: 1.4; max-height: 180px; overflow-y: auto;';
@@ -1418,6 +1425,21 @@ export class BuilderScene extends Phaser.Scene {
       this.courseRecordEl.textContent = `🏆 Course Record: ${store.courseRecord} (${parStr}) — ${dateStr}`;
     } else {
       this.courseRecordEl.textContent = '';
+    }
+
+    // Course par + average
+    const totalPar = store.holes.reduce((sum, h) => sum + h.par, 0);
+    const numHoles = store.holes.filter((h) => h.tee && h.cup).length;
+    if (numHoles > 0) {
+      const scores = store.completedScores;
+      if (scores.length > 0) {
+        const avg = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
+        this.courseAvgEl.textContent = `Par ${totalPar} · Avg: ${avg.toFixed(1)} (${scores.length} rounds)`;
+      } else {
+        this.courseAvgEl.textContent = `Par ${totalPar} (${numHoles} holes)`;
+      }
+    } else {
+      this.courseAvgEl.textContent = '';
     }
   }
 
@@ -2130,6 +2152,8 @@ export class BuilderScene extends Phaser.Scene {
     if (store.courseRecord === null || golfer.totalStrokes < store.courseRecord) {
       store.setCourseRecord(golfer.totalStrokes, new Date().toISOString());
     }
+    // Track completed score for average
+    store.addCompletedScore(golfer.totalStrokes);
 
     const sprite = this.golferSprites.get(golfer.id);
     if (sprite) {
