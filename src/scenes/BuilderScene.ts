@@ -150,22 +150,8 @@ export class BuilderScene extends Phaser.Scene {
     const hole1 = store.holes.find((h) => h.id === 1);
     if (!hole1?.tee) return;
     // Spawn one pair (2 golfers) + one solo = 3 initial golfers
-    // Each has walkTarget set to hole1 tee so they walk from clubhouse
-    const pair = this.spawnGolferPair();
-    if (pair) {
-      this.walkGolferToTee(pair[0].id, hole1.tee.col, hole1.tee.row);
-      this.walkGolferToTee(pair[1].id, hole1.tee.col, hole1.tee.row);
-    }
+    this.spawnGolferPair();
     this.spawnGolfer();
-  }
-
-  /** Set a golfer's walk target to the tee so they walk before their first swing */
-  private walkGolferToTee(golferId: number, teeCol: number, teeRow: number): void {
-    golferStore.getState().updateGolfer(golferId, {
-      state: 'walking',
-      stateTimer: GAME_CONFIG.WALK_STEP_TIME,
-      walkTarget: { col: teeCol, row: teeRow },
-    });
   }
 
   private spawnGolferPair(): [Golfer, Golfer] | null {
@@ -176,10 +162,9 @@ export class BuilderScene extends Phaser.Scene {
     const gStore = golferStore.getState();
     if (gStore.golfers.length + 2 > this.MAX_GOLFERS) return null;
 
-    // Spawn at clubhouse, walk to tee
-    const clubhousePos = getClubhousePosition();
-    const golferA = gStore.spawnGolfer(clubhousePos.col, clubhousePos.row);
-    const golferB = gStore.spawnGolfer(clubhousePos.col, clubhousePos.row);
+    // Spawn at hole 1 tee
+    const golferA = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    const golferB = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
     if (!golferA || !golferB) return null;
 
     // Offset B slightly so they don't perfectly overlap
@@ -211,9 +196,8 @@ export class BuilderScene extends Phaser.Scene {
     const gStore = golferStore.getState();
     if (gStore.golfers.length >= this.MAX_GOLFERS) return null;
 
-    // Spawn at clubhouse
-    const clubhousePos = getClubhousePosition();
-    const golfer = gStore.spawnGolfer(clubhousePos.col, clubhousePos.row);
+    // Spawn at hole 1 tee
+    const golfer = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
     if (!golfer) return null;
 
     const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
