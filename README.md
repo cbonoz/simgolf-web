@@ -4,7 +4,9 @@ A browser-based isometric golf course management sim inspired by Sid Meier's Sim
 
 ## Play
 
-[Play SimGolf Web](https://cbonoz.github.io/simgolf-web/) *(coming soon)*
+**[→ Play SimGolf Web on Vercel](https://simgolfweb.vercel.app/)**
+
+> Live demo hosted on Vercel. Your course saves to localStorage — refresh without losing progress.
 
 ## Gameplay
 
