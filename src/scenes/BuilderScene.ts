@@ -1291,7 +1291,7 @@ export class BuilderScene extends Phaser.Scene {
 
   private updateGolferCount(): void {
     const gStore = golferStore.getState();
-    const active = gStore.golfers.filter((g) => g.onCourse).length;
+    const active = gStore.golfers.filter((g) => g.onCourse && g.state !== 'round_complete').length;
     this.golferCountDisplay.textContent = `${active} golfer${active !== 1 ? 's' : ''} on course`;
   }
 
