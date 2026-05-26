@@ -1574,11 +1574,15 @@ export class BuilderScene extends Phaser.Scene {
 
   shutdown(): void {
     this.teeSprites.forEach((s) => s.destroy());
+    this.teeSprites.clear();
     this.flagSprites.forEach((s) => s.destroy());
+    this.flagSprites.clear();
     this.vegetationOverlaySprites.forEach((s) => s.destroy());
     this.vegetationOverlaySprites.clear();
     this.golferSprites.forEach((s) => s.destroy());
     this.golferSprites.clear();
+    this.activeBalls.forEach((b) => b.sprite.destroy());
+    this.activeBalls.clear();
     this.hideVegetationSidePanel();
     this.hideGolferTooltip();
     this.terrainPalette?.remove();
