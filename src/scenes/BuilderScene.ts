@@ -2,6 +2,7 @@ import * as Phaser from 'phaser';
 import { courseStore, Tile, HoleConfig } from '../state/course';
 import { golferStore, Golfer, generateThought } from '../state/golfers';
 import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE } from '../utils/constants';
+import { GAME_CONFIG } from '../utils/gameConfig';
 import { tileToScreen, screenToTile, clampTile, calculatePar } from '../utils/helpers';
 import { Ball } from '../entities/Ball';
 
@@ -44,8 +45,9 @@ export class BuilderScene extends Phaser.Scene {
   private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
   private activeBalls: Map<number, Ball> = new Map();
   private spawnTimer = 0;
-  private readonly SPAWN_INTERVAL = 4000; // ms between spawns
-  private readonly MAX_GOLFERS = 8;
+  private readonly SPAWN_INTERVAL = GAME_CONFIG.SPAWN_INTERVAL;
+  private readonly MAX_GOLFERS = GAME_CONFIG.MAX_GOLFERS;
+  private readonly MIN_GOLFERS = GAME_CONFIG.MIN_GOLFERS;
   private timeScale = 1;
   private scorecardEl!: HTMLDivElement;
   private timeControlsContainer!: HTMLDivElement;
@@ -72,6 +74,10 @@ export class BuilderScene extends Phaser.Scene {
   // Grid offset so all tiles are in positive world space
   private readonly OFFSET_X = (GRID_ROWS - 1) * (TILE_WIDTH / 2) + 100;
   private readonly OFFSET_Y = 100;
+
+  // Shot tracers
+  private tracerGraphics: Phaser.GameObjects.Graphics[] = [];
+  private readonly TRACER_FADE_DURATION = GAME_CONFIG.TRACER_FADE_DURATION;
 
   constructor() {
     super({ key: 'BuilderScene' });
@@ -747,7 +753,13 @@ export class BuilderScene extends Phaser.Scene {
 
     // Time controls + golfer info (unified build+play)
     const playSection = document.createElement('div');
-    playSection.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #555;';
+    playSection.id = 'golfer-panel';
+    playSection.style.cssText = `
+      position: fixed; top: 10px; right: 10px; z-index: 100;
+      background: rgba(0,0,0,0.85); border-radius: 8px; padding: 12px;
+      display: flex; flex-direction: column; gap: 6px; font-family: sans-serif;
+      min-width: 180px;
+    `;
 
     const playTitle = document.createElement('div');
     playTitle.textContent = '⛳ Golfers';
@@ -796,10 +808,10 @@ export class BuilderScene extends Phaser.Scene {
 
     // Scorecard
     this.scorecardEl = document.createElement('div');
-    this.scorecardEl.style.cssText = 'color: #ccc; font-size: 10px; line-height: 1.4; max-height: 120px; overflow-y: auto;';
+    this.scorecardEl.style.cssText = 'color: #ccc; font-size: 10px; line-height: 1.4; max-height: 180px; overflow-y: auto;';
     playSection.appendChild(this.scorecardEl);
 
-    this.terrainPalette.appendChild(playSection);
+    document.body.appendChild(playSection);
 
     // Download Save button
     const downloadBtn = document.createElement('button');
@@ -1197,19 +1209,18 @@ export class BuilderScene extends Phaser.Scene {
       }
     }
 
-    // Spawn timer — spawn in pairs
+    // Spawn timer — slow fallback, but main trigger is hole completion
     this.spawnTimer += scaledDelta;
-    if (this.spawnTimer >= this.SPAWN_INTERVAL) {
+    const gStore = golferStore.getState();
+    const activeCount = gStore.golfers.filter((g) => g.onCourse && g.state !== 'round_complete').length;
+
+    if (activeCount < this.MIN_GOLFERS && this.spawnTimer >= this.SPAWN_INTERVAL) {
       this.spawnTimer = 0;
-      // Try pair first, fall back to solo if near capacity
       const pair = this.spawnGolferPair();
-      if (!pair) {
-        this.spawnGolfer();
-      }
+      if (!pair) this.spawnGolfer();
     }
 
     // Update each golfer
-    const gStore = golferStore.getState();
     const store = courseStore.getState();
 
     for (const golfer of [...gStore.golfers]) {
@@ -1231,7 +1242,7 @@ export class BuilderScene extends Phaser.Scene {
           this.transitionToNext(golfer);
           break;
         case 'walking':
-          this.transitionToAddressing(golfer);
+          this.stepTowardWalkTarget(golfer);
           break;
         case 'hole_complete':
           this.transitionToNextHole(golfer);
@@ -1324,14 +1335,34 @@ export class BuilderScene extends Phaser.Scene {
     tooltip.style.cssText = `
       position: fixed; z-index: 200; background: rgba(0,0,0,0.9); border-radius: 8px;
       padding: 10px 14px; color: #fff; font-family: sans-serif; font-size: 12px;
-      max-width: 220px; pointer-events: none; line-height: 1.5;
+      max-width: 240px; pointer-events: none; line-height: 1.5;
       border: 1px solid #555;
     `;
 
     const name = document.createElement('div');
     name.textContent = golfer.name;
-    name.style.cssText = 'font-weight: bold; color: #ffcc80; margin-bottom: 4px;';
+    name.style.cssText = 'font-weight: bold; color: #ffcc80; margin-bottom: 2px;';
     tooltip.appendChild(name);
+
+    // Trait line
+    const traitEl = document.createElement('div');
+    traitEl.style.cssText = 'color: #aaa; font-size: 11px; margin-bottom: 4px;';
+    traitEl.textContent = `${golfer.trait.emoji} ${golfer.trait.name} — ${golfer.trait.description}`;
+    tooltip.appendChild(traitEl);
+
+    // Skills
+    const skillsEl = document.createElement('div');
+    skillsEl.style.cssText = 'display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 4px;';
+    for (const skill of golfer.skills) {
+      const badge = document.createElement('span');
+      badge.textContent = `${skill.emoji}${skill.name}`;
+      badge.style.cssText = `
+        background: #2a4a2a; color: #a8d8a8; padding: 1px 6px; border-radius: 8px;
+        font-size: 10px; border: 1px solid #3a6a3a;
+      `;
+      skillsEl.appendChild(badge);
+    }
+    tooltip.appendChild(skillsEl);
 
     const stats = document.createElement('div');
     stats.style.cssText = 'color: #ccc; font-size: 11px;';
@@ -1377,7 +1408,7 @@ export class BuilderScene extends Phaser.Scene {
   private transitionToSwinging(golfer: Golfer): void {
     golferStore.getState().updateGolfer(golfer.id, {
       state: 'swinging',
-      stateTimer: 400,
+      stateTimer: GAME_CONFIG.SWING_TIME,
     });
   }
 
@@ -1401,11 +1432,38 @@ export class BuilderScene extends Phaser.Scene {
 
     let targetDistance = this.pickClubDistance(distance);
 
-    const errorFactor = 1 - golfer.skill;
+    // --- Skill modifiers ---
+    const hasLongDrive = golfer.skills.some(s => s.name === 'Long Drive');
+    const hasPowerSwing = golfer.skills.some(s => s.name === 'Power Swing');
+    const hasShortGame = golfer.skills.some(s => s.name === 'Short Game');
+    const hasIronMan = golfer.skills.some(s => s.name === 'Iron Man');
+    const hasWindReader = golfer.skills.some(s => s.name === 'Wind Reader');
+
+    // Long Drive / Power Swing: add bonus distance
+    if (hasLongDrive) targetDistance += 2;
+    if (hasPowerSwing) targetDistance += 2;
+    // Short Game: bonus on short approaches (<6 tile distance)
+    if (hasShortGame && distance < 6) targetDistance += 2;
+
+    // --- Terrain lie effects ---
+    const currentTile = store.grid[currentPos.row][currentPos.col];
+    const lieEffect = TERRAIN_EFFECTS[currentTile.type];
+
+    // Wind Reader: reduces terrain penalty
+    const terrainPenalty = hasWindReader ? 0.5 : 1.0;
+    const lieQuality = currentTile.type === 'fairway' || currentTile.type === 'green' ? 1.0
+      : 1.0 - (1.0 - lieEffect.lieQuality) * terrainPenalty;
+    const lieDistMod = currentTile.type === 'fairway' || currentTile.type === 'green' ? 1.0
+      : 1.0 - (1.0 - lieEffect.distanceModifier) * terrainPenalty;
+
+    // Iron Man: bonus accuracy on fairway
+    const accuracyBonus = (hasIronMan && currentTile.type === 'fairway') ? 0.2 : 0;
+
+    const errorFactor = (1 - (golfer.skill + accuracyBonus)) * (2 - lieQuality);
     const angleError = (Math.random() - 0.5) * 2 * Math.PI * 0.25 * errorFactor;
     const distanceError = 1 + (Math.random() - 0.5) * 0.3 * errorFactor;
 
-    targetDistance = Math.round(targetDistance * distanceError);
+    targetDistance = Math.round(targetDistance * distanceError * lieDistMod);
     targetDistance = Math.max(1, targetDistance);
 
     let landingCol: number;
@@ -1424,11 +1482,27 @@ export class BuilderScene extends Phaser.Scene {
     landingCol = clamped.col;
     landingRow = clamped.row;
 
+    // --- Tree collision: trace the flight path tile-by-tile ---
+    const treeHit = this.traceFlightPath(currentPos.col, currentPos.row, landingCol, landingRow, store.grid);
+    if (treeHit) {
+      // Ball hits a tree — deflect to the tile just before the tree
+      landingCol = treeHit.col;
+      landingRow = treeHit.row;
+      const gStore = golferStore.getState();
+      const g = gStore.golfers.find((gg) => gg.id === golfer.id);
+      if (g) {
+        gStore.updateGolfer(golfer.id, { treeHits: g.treeHits + 1 });
+      }
+    }
+
     const previousPos = { ...golfer.tilePos };
+
+    // Emit shot tracer
+    this.emitShotTracer(currentPos.col, currentPos.row, landingCol, landingRow);
 
     golferStore.getState().updateGolfer(golfer.id, {
       state: 'ball_flight',
-      stateTimer: 600,
+      stateTimer: GAME_CONFIG.BALL_FLIGHT_TIME,
       previousTilePos: previousPos,
     });
 
@@ -1440,7 +1514,7 @@ export class BuilderScene extends Phaser.Scene {
       landingRow,
       this.OFFSET_X,
       this.OFFSET_Y,
-      500,
+      GAME_CONFIG.BALL_FLIGHT_TIME, // ball travel time
       () => this.onBallLanded(golfer.id, landingCol, landingRow, previousPos)
     ));
   }
@@ -1451,6 +1525,86 @@ export class BuilderScene extends Phaser.Scene {
     if (distanceToCup >= 6) return 4;
     if (distanceToCup >= 3) return 2;
     return 1;
+  }
+
+  /**
+   * Trace a line from (c1,r1) to (c2,r2) using Bresenham's line algorithm.
+   * Returns {col, row} of the LAST passable tile before a tree tile,
+   * or null if no tree is in the path.
+   */
+  private traceFlightPath(
+    c1: number, r1: number,
+    c2: number, r2: number,
+    grid: Tile[][]
+  ): { col: number; row: number } | null {
+    let lastGood: { col: number; row: number } | null = null;
+    const dx = Math.abs(c2 - c1);
+    const dy = Math.abs(r2 - r1);
+    const sx = c1 < c2 ? 1 : -1;
+    const sy = r1 < r2 ? 1 : -1;
+    let err = dx - dy;
+    let cx = c1;
+    let ry = r1;
+
+    while (cx !== c2 || ry !== r2) {
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; cx += sx; }
+      if (e2 < dx) { err += dx; ry += sy; }
+
+      if (cx < 0 || cx >= GRID_COLS || ry < 0 || ry >= GRID_ROWS) break;
+
+      const tile = grid[ry][cx];
+      if (tile.type === 'trees') {
+        // Hit a tree — return the last good tile before it
+        return lastGood ?? { col: c1, row: r1 };
+      }
+      lastGood = { col: cx, row: ry };
+    }
+    return null;
+  }
+
+  /**
+   * Draw a fading arc tracer from the golfer's start tile to the landing tile.
+   * The arc fades out over ~3 seconds via a Phaser tween on the Graphics alpha.
+   */
+  private emitShotTracer(fromCol: number, fromRow: number, toCol: number, toRow: number): void {
+    const start = this.tileToWorld(fromCol, fromRow);
+    const end = this.tileToWorld(toCol, toRow);
+
+    const gfx = this.add.graphics();
+    gfx.setDepth(9996);
+
+    // Calculate arc control point: mid-point with a height proportional to distance
+    const midX = (start.x + end.x) / 2;
+    const midY = (start.y + end.y) / 2;
+    const arcH = Math.abs(toCol - fromCol) + Math.abs(toRow - fromRow);
+    const arcPeak = Math.max(15, arcH * 5);
+
+    // Draw a quadratic bezier arc (30 segments)
+    gfx.lineStyle(2, 0xffffff, 0.6);
+    gfx.beginPath();
+    gfx.moveTo(start.x, start.y - 4);
+    for (let i = 1; i <= 30; i++) {
+      const t = i / 30;
+      const px = Phaser.Math.Linear(start.x, end.x, t);
+      const py = Phaser.Math.Linear(start.y, end.y, t);
+      const arc = Math.sin(t * Math.PI) * arcPeak;
+      gfx.lineTo(px, py - 4 - arc);
+    }
+    gfx.strokePath();
+
+    // Fade out and destroy
+    this.tracerGraphics.push(gfx);
+    this.tweens.add({
+      targets: gfx,
+      alpha: { from: 0.6, to: 0 },
+      duration: this.TRACER_FADE_DURATION,
+      onComplete: () => {
+        gfx.destroy();
+        const idx = this.tracerGraphics.indexOf(gfx);
+        if (idx >= 0) this.tracerGraphics.splice(idx, 1);
+      },
+    });
   }
 
   private onBallLanded(golferId: number, landingCol: number, landingRow: number, previousPos: { col: number; row: number }): void {
@@ -1465,7 +1619,7 @@ export class BuilderScene extends Phaser.Scene {
 
     let newStrokes = golfer.strokes + 1;
     let newState: 'reacting' | 'hole_complete' = 'reacting';
-    let stateTimer = 400;
+    let stateTimer = GAME_CONFIG.BALL_LAND_REACT_TIME;
     let newTilePos = { col: landingCol, row: landingRow };
 
     const effect = TERRAIN_EFFECTS[tile.type];
@@ -1473,33 +1627,36 @@ export class BuilderScene extends Phaser.Scene {
     if (tile.type === 'water') {
       newStrokes += 1;
       newTilePos = previousPos;
-      stateTimer = 800;
+      stateTimer = GAME_CONFIG.WATER_REACT_TIME;
       // Track water hit for reputation
       const g = gStore.golfers.find((gg) => gg.id === golferId);
       if (g) {
         gStore.updateGolfer(golferId, { waterHits: g.waterHits + 1 });
       }
     } else if (tile.type === 'trees') {
-      stateTimer = 600;
-      // Track tree hit for reputation
+      // Ball landed in trees — deflect back (can't play from tree tile)
+      newTilePos = previousPos;
+      stateTimer = GAME_CONFIG.TREE_REACT_TIME;
       const g = gStore.golfers.find((gg) => gg.id === golferId);
       if (g) {
         gStore.updateGolfer(golferId, { treeHits: g.treeHits + 1 });
       }
     } else if (tile.type === 'green' && cupPos) {
       const distToCup = Math.abs(landingCol - cupPos.col) + Math.abs(landingRow - cupPos.row);
-      const puttRange = Math.max(1, Math.round(golfer.skill * 3));
+      // Accurate Putter: +50% putting range
+      const puttBonus = golfer.skills.some(s => s.name === 'Accurate Putter') ? 1.5 : 1.0;
+      const puttRange = Math.max(1, Math.round(golfer.skill * 3 * puttBonus));
 
       if (distToCup <= puttRange) {
         newTilePos = { col: cupPos.col, row: cupPos.row };
         newState = 'hole_complete';
-        stateTimer = 800;
+        stateTimer = GAME_CONFIG.HOLE_OUT_TIME;
       }
     }
 
     if (newStrokes >= MAX_STROKES_PER_HOLE) {
       newState = 'hole_complete';
-      stateTimer = 500;
+      stateTimer = GAME_CONFIG.MAX_STROKES_TIME;
     }
 
     gStore.updateGolfer(golferId, {
@@ -1508,6 +1665,49 @@ export class BuilderScene extends Phaser.Scene {
       state: newState,
       stateTimer,
     });
+  }
+
+  /**
+   * Show a floating popup over the golfer with a happiness emoji (based on
+   * score vs par) and the greens fee earned. Fades out after ~2.5s.
+   */
+  private showHoleResultPopup(golfer: Golfer, par: number, greensFee: number): void {
+    const scoreVsPar = golfer.strokes - par;
+
+    // Pick emoji based on performance
+    const emoji = scoreVsPar <= -1 ? '😄' :
+      scoreVsPar === 0 ? '😊' :
+      scoreVsPar <= 2 ? '😐' :
+      scoreVsPar <= 4 ? '😣' : '😡';
+
+    const sprite = this.golferSprites.get(golfer.id);
+    if (!sprite) return;
+
+    const worldPos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
+    const cam = this.cameras.main;
+
+    // Convert world pos to screen coords
+    const screenX = worldPos.x - cam.scrollX;
+    const screenY = (worldPos.y - 4) - cam.scrollY;
+
+    const el = document.createElement('div');
+    el.style.cssText = `
+      position: fixed; z-index: 300; pointer-events: none;
+      font-family: sans-serif; font-size: 20px; text-align: center;
+      color: #fff; font-weight: bold; line-height: 1.3;
+      transition: opacity 2s ease-out, transform 2s ease-out;
+      left: ${screenX}px; top: ${screenY - 30}px;
+      transform: translate(-50%, 0);
+    `;
+    el.innerHTML = `${emoji}<br><span style="font-size:14px;color:#4caf50;">+$${greensFee}</span>`;
+    document.body.appendChild(el);
+
+    // Float up and fade out
+    requestAnimationFrame(() => {
+      el.style.transform = 'translate(-50%, -40px)';
+      el.style.opacity = '0';
+    });
+    setTimeout(() => el.remove(), 2500);
   }
 
   private transitionToNext(golfer: Golfer): void {
@@ -1524,10 +1724,29 @@ export class BuilderScene extends Phaser.Scene {
         stateTimer: 0,
       });
     } else {
-      golferStore.getState().updateGolfer(golfer.id, {
-        state: 'addressing',
-        stateTimer: 600,
-      });
+      // Walk toward the ball's position (tilePos was set by onBallLanded)
+      const arrived = golfer.tilePos.col === golfer.previousTilePos?.col &&
+                      golfer.tilePos.row === golfer.previousTilePos?.row;
+      // If previousTilePos is null or same as tilePos, the ball didn't really move
+      if (!golfer.previousTilePos || arrived) {
+        // Ball stayed on same tile (e.g. wedge that didn't move) — just re-address
+        golferStore.getState().updateGolfer(golfer.id, {
+          state: 'addressing',
+          stateTimer: GAME_CONFIG.ADDRESS_TIME,
+          walkTarget: null,
+        });
+      } else {
+        // The ball landed elsewhere — walk to golfer.tilePos (the landing tile)
+        const landingPos = { ...golfer.tilePos };
+        // Reset tilePos back to pre-swing position so stepTowardWalkTarget works
+        golferStore.getState().updateGolfer(golfer.id, {
+          tilePos: { ...golfer.previousTilePos },
+          state: 'walking',
+          stateTimer: GAME_CONFIG.WALK_STEP_TIME,
+          previousTilePos: null,
+          walkTarget: landingPos,
+        });
+      }
     }
   }
 
@@ -1541,6 +1760,19 @@ export class BuilderScene extends Phaser.Scene {
     const repMult = store.getReputationMultiplier();
     const greensFee = Math.round(baseGreensFee * repMult);
     store.addMoney(greensFee);
+
+    // Show floating emoji + greens fee popup over this golfer
+    this.showHoleResultPopup(golfer, par, greensFee);
+
+    // Trigger a spawn when any golfer finishes hole 1 — keeps fresh golfers coming
+    // even if there's only 1 hole on the course
+    if (golfer.currentHole === 1) {
+      const gStore = golferStore.getState();
+      const activeCount = gStore.golfers.filter((g) => g.onCourse && g.state !== 'round_complete').length;
+      if (activeCount < this.MAX_GOLFERS) {
+        this.spawnGolferPair();
+      }
+    }
 
     const scorecard = [...golfer.scorecard, golfer.strokes];
     const newTotal = golfer.totalStrokes + golfer.strokes;
@@ -1590,19 +1822,69 @@ export class BuilderScene extends Phaser.Scene {
 
     golferStore.getState().updateGolfer(golfer.id, {
       currentHole: nextHoleId,
-      tilePos: { col: nextHole.tee.col, row: nextHole.tee.row },
       strokes: 0,
       scorecard,
       totalStrokes: newTotal,
-      state: 'addressing',
-      stateTimer: 800,
+      state: 'walking',
+      stateTimer: GAME_CONFIG.WALK_STEP_TIME_NEXT_HOLE,
+      walkTarget: { col: nextHole.tee.col, row: nextHole.tee.row },
+    });
+  }
+
+  /**
+   * Move the golfer one tile toward their walkTarget using a step toward
+   * whichever axis has the larger remaining distance. When they arrive,
+   * transition to addressing (or hole_address for next-tee walks).
+   */
+  private stepTowardWalkTarget(golfer: Golfer): void {
+    const target = golfer.walkTarget;
+    if (!target) {
+      // No target — just address
+      golferStore.getState().updateGolfer(golfer.id, {
+        state: 'addressing',
+        stateTimer: GAME_CONFIG.ADDRESS_TIME,
+        walkTarget: null,
+      });
+      return;
+    }
+
+    const { col: curCol, row: curRow } = golfer.tilePos;
+    const dc = target.col - curCol;
+    const dr = target.row - curRow;
+
+    if (dc === 0 && dr === 0) {
+      // Arrived!
+      const wasHoleWalk = golfer.strokes === 0; // just started a new hole
+      golferStore.getState().updateGolfer(golfer.id, {
+        state: 'addressing',
+        stateTimer: wasHoleWalk ? GAME_CONFIG.ADDRESS_TIME_NEXT_HOLE : GAME_CONFIG.ADDRESS_TIME,
+        walkTarget: null,
+      });
+      return;
+    }
+
+    // Move one tile: prefer the axis with larger distance
+    let stepCol = 0;
+    let stepRow = 0;
+    if (Math.abs(dc) >= Math.abs(dr)) {
+      stepCol = dc > 0 ? 1 : -1;
+    } else {
+      stepRow = dr > 0 ? 1 : -1;
+    }
+
+    const newCol = curCol + stepCol;
+    const newRow = curRow + stepRow;
+
+    golferStore.getState().updateGolfer(golfer.id, {
+      tilePos: { col: newCol, row: newRow },
+      stateTimer: GAME_CONFIG.WALK_STEP_TIME, // ms until next step
     });
   }
 
   private transitionToAddressing(golfer: Golfer): void {
     golferStore.getState().updateGolfer(golfer.id, {
       state: 'addressing',
-      stateTimer: 600,
+      stateTimer: GAME_CONFIG.ADDRESS_TIME,
     });
   }
 
@@ -1617,9 +1899,12 @@ export class BuilderScene extends Phaser.Scene {
     this.golferSprites.clear();
     this.activeBalls.forEach((b) => b.sprite.destroy());
     this.activeBalls.clear();
+    this.tracerGraphics.forEach((g) => g.destroy());
+    this.tracerGraphics = [];
     this.hideVegetationSidePanel();
     this.hideGolferTooltip();
     this.terrainPalette?.remove();
+    document.getElementById('golfer-panel')?.remove();
     this.moneyDisplay?.remove();
     this.helpText?.remove();
     document.querySelectorAll('.builder-toast').forEach((el) => el.remove());
