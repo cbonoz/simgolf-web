@@ -162,10 +162,23 @@ export class BuilderScene extends Phaser.Scene {
     const gStore = golferStore.getState();
     if (gStore.golfers.length + 2 > this.MAX_GOLFERS) return null;
 
-    // Spawn at hole 1 tee
-    const golferA = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
-    const golferB = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    // Spawn at clubhouse, immediately start walking to tee
+    const chPos = getClubhousePosition();
+    const golferA = gStore.spawnGolfer(chPos.col, chPos.row);
+    const golferB = gStore.spawnGolfer(chPos.col, chPos.row);
     if (!golferA || !golferB) return null;
+
+    // Set both to walk toward the first tee
+    gStore.updateGolfer(golferA.id, {
+      state: 'walking',
+      stateTimer: GAME_CONFIG.WALK_STEP_TIME,
+      walkTarget: { col: hole1.tee.col, row: hole1.tee.row },
+    });
+    gStore.updateGolfer(golferB.id, {
+      state: 'walking',
+      stateTimer: GAME_CONFIG.WALK_STEP_TIME,
+      walkTarget: { col: hole1.tee.col, row: hole1.tee.row },
+    });
 
     // Offset B slightly so they don't perfectly overlap
     golferB.tilePos = { col: hole1.tee.col, row: hole1.tee.row };
@@ -196,9 +209,17 @@ export class BuilderScene extends Phaser.Scene {
     const gStore = golferStore.getState();
     if (gStore.golfers.length >= this.MAX_GOLFERS) return null;
 
-    // Spawn at hole 1 tee
-    const golfer = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    // Spawn at clubhouse, immediately start walking to tee
+    const chPos = getClubhousePosition();
+    const golfer = gStore.spawnGolfer(chPos.col, chPos.row);
     if (!golfer) return null;
+
+    // Walk to first tee
+    gStore.updateGolfer(golfer.id, {
+      state: 'walking',
+      stateTimer: GAME_CONFIG.WALK_STEP_TIME,
+      walkTarget: { col: hole1.tee.col, row: hole1.tee.row },
+    });
 
     const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
     const sprite = this.add.sprite(pos.x, pos.y - 4, `golfer_${golfer.colorIndex}`);
