@@ -205,13 +205,15 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
 
   getTile: (col, row) => get().grid[row][col],
 
-  resetCourse: () =>
+  resetCourse: () => {
+    localStorage.removeItem('simgolf_course_v1');
     set({
       grid: createEmptyGrid(),
       holes: createDefaultHoles(),
       money: 5000,
       debt: 0,
-    }),
+    });
+  },
 
   serialize: () => {
     const { grid, holes, money, debt } = get();
