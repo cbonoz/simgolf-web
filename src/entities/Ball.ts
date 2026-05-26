@@ -54,8 +54,18 @@ export class Ball {
 
     if (progress >= 1) {
       this.isComplete = true;
-      this.sprite.destroy();
+      // Don't destroy the sprite — leave it at landing position as a marker.
+      // The onComplete callback will handle making the golfer visible there,
+      // and whoever cleans up the ball later can call removeSprite().
+      this.sprite.setDepth(9994); // below golfer depth so golfer sprite shows on top
       this.onComplete();
+    }
+  }
+
+  /** Remove the ball sprite from the scene (e.g. when golfer walks over it) */
+  removeSprite(): void {
+    if (this.sprite && this.sprite.active) {
+      this.sprite.destroy();
     }
   }
 }

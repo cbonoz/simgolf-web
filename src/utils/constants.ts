@@ -104,7 +104,7 @@ export const TERRAIN_EFFECTS: Record<TerrainType, TerrainEffect> = {
 };
 
 // Game settings
-export const MAX_STROKES_PER_HOLE = 10;
+export const MAX_STROKES_PER_HOLE = 9;
 export const MAX_GOLFERS_ON_COURSE = 12;
 export const STARTING_MONEY = 5000;
 

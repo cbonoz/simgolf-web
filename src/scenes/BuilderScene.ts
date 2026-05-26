@@ -5,6 +5,7 @@ import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYP
 import { GAME_CONFIG } from '../utils/gameConfig';
 import { tileToScreen, screenToTile, clampTile, calculatePar } from '../utils/helpers';
 import { Ball } from '../entities/Ball';
+import { MusicScene } from './MusicScene';
 
 type CourseSnapshot = {
   grid: Tile[][];
@@ -79,6 +80,12 @@ export class BuilderScene extends Phaser.Scene {
   private tracerGraphics: Phaser.GameObjects.Graphics[] = [];
   private readonly TRACER_FADE_DURATION = GAME_CONFIG.TRACER_FADE_DURATION;
 
+  // Landing ball markers (persistent sprites at landing positions)
+  private landingBallSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
+
+  // SFX
+  private musicScene!: MusicScene;
+
   constructor() {
     super({ key: 'BuilderScene' });
   }
@@ -130,6 +137,9 @@ export class BuilderScene extends Phaser.Scene {
     // Initialize golfers for unified build+play
     golferStore.getState().resetGolfers();
     this.spawnInitialGolfers();
+
+    // Get reference to MusicScene for SFX
+    this.musicScene = this.scene.get('MusicScene') as MusicScene;
   }
 
   private spawnInitialGolfers(): void {
@@ -755,7 +765,7 @@ export class BuilderScene extends Phaser.Scene {
     const playSection = document.createElement('div');
     playSection.id = 'golfer-panel';
     playSection.style.cssText = `
-      position: fixed; top: 10px; right: 10px; z-index: 100;
+      position: fixed; top: 55px; right: 10px; z-index: 100;
       background: rgba(0,0,0,0.85); border-radius: 8px; padding: 12px;
       display: flex; flex-direction: column; gap: 6px; font-family: sans-serif;
       min-width: 180px;
@@ -1205,6 +1215,8 @@ export class BuilderScene extends Phaser.Scene {
     for (const [golferId, ball] of this.activeBalls) {
       ball.update(scaledDelta);
       if (ball.complete) {
+        // Save the sprite as a landing marker before removing from active balls
+        this.landingBallSprites.set(golferId, ball.sprite);
         this.activeBalls.delete(golferId);
       }
     }
@@ -1259,6 +1271,7 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   private syncGolferSprites(): void {
+    const lerpRate = 0.08;
     const gStore = golferStore.getState();
     // Group golfers by tile position to detect pairs
     const tileGroups = new Map<string, Golfer[]>();
@@ -1280,7 +1293,22 @@ export class BuilderScene extends Phaser.Scene {
           const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
           // Spread multiple golfers on same tile horizontally
           const spreadX = count === 1 ? 0 : (i - (count - 1) / 2) * 6;
-          sprite.setPosition(pos.x + spreadX, pos.y - 4);
+          const targetX = pos.x + spreadX;
+          const targetY = pos.y - 4;
+
+          // Lerp toward target for smooth gliding movement
+          // Snap instantly only during ball flight to keep up with ball
+          const instant = golfer.state === 'ball_flight';
+          if (instant) {
+            sprite.setPosition(targetX, targetY);
+          } else {
+            sprite.x += (targetX - sprite.x) * lerpRate;
+            sprite.y += (targetY - sprite.y) * lerpRate;
+            // Snap if very close to avoid perpetual micro-movement
+            if (Math.abs(sprite.x - targetX) < 0.5) sprite.x = targetX;
+            if (Math.abs(sprite.y - targetY) < 0.5) sprite.y = targetY;
+          }
+
           sprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row) + i * 0.01);
         }
       }
@@ -1413,6 +1441,7 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   private executeSwing(golfer: Golfer): void {
+    this.musicScene.playSfx('swing');
     const store = courseStore.getState();
     const hole = store.holes.find((h) => h.id === golfer.currentHole);
     if (!hole?.cup) {
@@ -1488,6 +1517,23 @@ export class BuilderScene extends Phaser.Scene {
       // Ball hits a tree — deflect to the tile just before the tree
       landingCol = treeHit.col;
       landingRow = treeHit.row;
+      // If the deflected tile is the same as where the golfer is standing,
+      // scatter to a random adjacent tile instead
+      if (landingCol === currentPos.col && landingRow === currentPos.row) {
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+        const valid = dirs.filter(([dc, dr]) => {
+          const nc = currentPos.col + dc;
+          const nr = currentPos.row + dr;
+          return nc >= 0 && nc < GRID_COLS && nr >= 0 && nr < GRID_ROWS
+            && store.grid[nr][nc].type !== 'trees'
+            && store.grid[nr][nc].type !== 'water';
+        });
+        if (valid.length > 0) {
+          const [dc, dr] = valid[Math.floor(Math.random() * valid.length)];
+          landingCol = currentPos.col + dc;
+          landingRow = currentPos.row + dr;
+        }
+      }
       const gStore = golferStore.getState();
       const g = gStore.golfers.find((gg) => gg.id === golfer.id);
       if (g) {
@@ -1624,6 +1670,13 @@ export class BuilderScene extends Phaser.Scene {
 
     const effect = TERRAIN_EFFECTS[tile.type];
 
+    // SFX based on landing terrain
+    if (tile.type === 'water') {
+      this.musicScene.playSfx('splash');
+    } else if (tile.type === 'trees') {
+      this.musicScene.playSfx('tree');
+    }
+
     if (tile.type === 'water') {
       newStrokes += 1;
       newTilePos = previousPos;
@@ -1651,7 +1704,13 @@ export class BuilderScene extends Phaser.Scene {
         newTilePos = { col: cupPos.col, row: cupPos.row };
         newState = 'hole_complete';
         stateTimer = GAME_CONFIG.HOLE_OUT_TIME;
+        this.musicScene.playSfx('cup');
+      } else {
+        this.musicScene.playSfx('thwack');
       }
+    } else {
+      // Landed on fairway, rough, or sand
+      this.musicScene.playSfx('thwack');
     }
 
     if (newStrokes >= MAX_STROKES_PER_HOLE) {
@@ -1660,10 +1719,12 @@ export class BuilderScene extends Phaser.Scene {
     }
 
     gStore.updateGolfer(golferId, {
-      tilePos: newTilePos,
       strokes: newStrokes,
       state: newState,
       stateTimer,
+      // Don't update tilePos here — let transitionToNext handle walking
+      // Store the landing position for walking
+      walkTarget: newState === 'reacting' ? newTilePos : null,
     });
   }
 
@@ -1719,32 +1780,32 @@ export class BuilderScene extends Phaser.Scene {
     const distToCup = Math.abs(golfer.tilePos.col - cupPos.col) + Math.abs(golfer.tilePos.row - cupPos.row);
 
     if (distToCup <= 0 || golfer.strokes >= MAX_STROKES_PER_HOLE) {
+      // Remove ball marker — hole is done
+      this.removeBallSprite(golfer.id);
       golferStore.getState().updateGolfer(golfer.id, {
         state: 'hole_complete',
         stateTimer: 0,
       });
     } else {
-      // Walk toward the ball's position (tilePos was set by onBallLanded)
-      const arrived = golfer.tilePos.col === golfer.previousTilePos?.col &&
-                      golfer.tilePos.row === golfer.previousTilePos?.row;
-      // If previousTilePos is null or same as tilePos, the ball didn't really move
-      if (!golfer.previousTilePos || arrived) {
-        // Ball stayed on same tile (e.g. wedge that didn't move) — just re-address
+      // Walk toward the ball's position (walkTarget was set by onBallLanded)
+      const landingPos = golfer.walkTarget;
+      // Remove the ball marker sprite — golfer is about to move to it
+      this.removeBallSprite(golfer.id);
+      if (!landingPos || (landingPos.col === golfer.tilePos.col && landingPos.row === golfer.tilePos.row)) {
+        // Ball stayed on same tile — just re-address
         golferStore.getState().updateGolfer(golfer.id, {
           state: 'addressing',
           stateTimer: GAME_CONFIG.ADDRESS_TIME,
           walkTarget: null,
         });
       } else {
-        // The ball landed elsewhere — walk to golfer.tilePos (the landing tile)
-        const landingPos = { ...golfer.tilePos };
-        // Reset tilePos back to pre-swing position so stepTowardWalkTarget works
+        // Walk to the landing position
         golferStore.getState().updateGolfer(golfer.id, {
-          tilePos: { ...golfer.previousTilePos },
           state: 'walking',
           stateTimer: GAME_CONFIG.WALK_STEP_TIME,
           previousTilePos: null,
-          walkTarget: landingPos,
+          // walkTarget already set by onBallLanded
+          // keep it as-is
         });
       }
     }
@@ -1816,6 +1877,7 @@ export class BuilderScene extends Phaser.Scene {
         sprite.destroy();
         this.golferSprites.delete(golfer.id);
       }
+      this.removeBallSprite(golfer.id);
       golferStore.getState().removeGolfer(golfer.id);
       return;
     }
@@ -1888,6 +1950,15 @@ export class BuilderScene extends Phaser.Scene {
     });
   }
 
+  /** Destroy the landing ball marker sprite for a golfer */
+  private removeBallSprite(golferId: number): void {
+    const sprite = this.landingBallSprites.get(golferId);
+    if (sprite) {
+      sprite.destroy();
+      this.landingBallSprites.delete(golferId);
+    }
+  }
+
   shutdown(): void {
     this.teeSprites.forEach((s) => s.destroy());
     this.teeSprites.clear();
@@ -1899,12 +1970,15 @@ export class BuilderScene extends Phaser.Scene {
     this.golferSprites.clear();
     this.activeBalls.forEach((b) => b.sprite.destroy());
     this.activeBalls.clear();
+    this.landingBallSprites.forEach((s) => s.destroy());
+    this.landingBallSprites.clear();
     this.tracerGraphics.forEach((g) => g.destroy());
     this.tracerGraphics = [];
     this.hideVegetationSidePanel();
     this.hideGolferTooltip();
     this.terrainPalette?.remove();
     document.getElementById('golfer-panel')?.remove();
+    document.getElementById('music-player')?.remove();
     this.moneyDisplay?.remove();
     this.helpText?.remove();
     document.querySelectorAll('.builder-toast').forEach((el) => el.remove());
