@@ -1,7 +1,7 @@
 import * as Phaser from 'phaser';
-import { courseStore, Tile, HoleConfig } from '../state/course';
+import { courseStore, Tile, HoleConfig, PlacedBuilding } from '../state/course';
 import { golferStore, Golfer, generateThought } from '../state/golfers';
-import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE } from '../utils/constants';
+import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
 import { GAME_CONFIG } from '../utils/gameConfig';
 import { tileToScreen, screenToTile, clampTile, calculatePar } from '../utils/helpers';
 import { Ball } from '../entities/Ball';
@@ -82,6 +82,9 @@ export class BuilderScene extends Phaser.Scene {
 
   // Landing ball markers (persistent sprites at landing positions)
   private landingBallSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
+
+  // Building sprites
+  private buildingSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
 
   // SFX
   private musicScene!: MusicScene;
@@ -246,6 +249,9 @@ export class BuilderScene extends Phaser.Scene {
         }
       }
     }
+
+    // Render buildings from the course store
+    this.renderAllBuildings();
   }
 
   private addVegetationOverlay(
@@ -270,6 +276,37 @@ export class BuilderScene extends Phaser.Scene {
     if (plant) {
       plant.destroy();
       this.vegetationOverlaySprites.delete(key);
+    }
+  }
+
+  // === BUILDING RENDERING ===
+
+  private renderAllBuildings(): void {
+    const store = courseStore.getState();
+    for (const bld of store.buildings) {
+      this.renderBuilding(bld.typeKey, bld.col, bld.row);
+    }
+  }
+
+  private renderBuilding(typeKey: string, col: number, row: number): void {
+    const key = `${col},${row}`;
+    // Remove existing sprite at this position if any
+    const existing = this.buildingSprites.get(key);
+    if (existing) existing.destroy();
+
+    const pos = this.tileToWorld(col, row);
+    const sprite = this.add.sprite(pos.x, pos.y - 8, `building_${typeKey}`);
+    sprite.setOrigin(0.5, 1);
+    sprite.setDepth((col + row) * GRID_COLS + col + 0.4);
+    this.buildingSprites.set(key, sprite);
+  }
+
+  private removeBuildingSprite(col: number, row: number): void {
+    const key = `${col},${row}`;
+    const sprite = this.buildingSprites.get(key);
+    if (sprite) {
+      sprite.destroy();
+      this.buildingSprites.delete(key);
     }
   }
 
@@ -308,6 +345,13 @@ export class BuilderScene extends Phaser.Scene {
       const clickedGolfer = this.findGolferAt(pointer.worldX, pointer.worldY);
       if (clickedGolfer) {
         this.showGolferTooltip(clickedGolfer);
+        return;
+      }
+
+      // Check if clicking on a building
+      const clickedBuilding = this.findBuildingAt(pointer.worldX, pointer.worldY);
+      if (clickedBuilding) {
+        this.showBuildingTooltip(clickedBuilding);
         return;
       }
 
@@ -1431,6 +1475,82 @@ export class BuilderScene extends Phaser.Scene {
     }
   }
 
+  // === BUILDING CLICK INSPECT ===
+
+  private buildingTooltip: HTMLDivElement | null = null;
+
+  private findBuildingAt(worldX: number, worldY: number): PlacedBuilding | null {
+    const store = courseStore.getState();
+    const tile = this.worldToTile(worldX, worldY);
+    // Check if any building occupies this tile
+    for (const bld of store.buildings) {
+      const bt = BUILDING_TYPES.find((b) => b.key === bld.typeKey);
+      if (!bt) continue;
+      // Check if click is within the building's footprint
+      for (let dc = 0; dc < (bt.width || 1); dc++) {
+        for (let dr = 0; dr < (bt.height || 1); dr++) {
+          if (bld.col + dc === tile.col && bld.row + dr === tile.row) {
+            return bld;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  private showBuildingTooltip(building: PlacedBuilding): void {
+    this.hideBuildingTooltip();
+    const bt = BUILDING_TYPES.find((b) => b.key === building.typeKey);
+    if (!bt) return;
+
+    const sprite = this.buildingSprites.get(`${building.col},${building.row}`);
+    if (!sprite) return;
+
+    const matrix = sprite.getWorldTransformMatrix();
+    const tooltip = document.createElement('div');
+    tooltip.id = 'building-tooltip';
+    tooltip.style.cssText = `
+      position: fixed; z-index: 200; background: rgba(0,0,0,0.9); border-radius: 8px;
+      padding: 10px 14px; color: #fff; font-family: sans-serif; font-size: 12px;
+      max-width: 220px; pointer-events: none; line-height: 1.5;
+      border: 1px solid #555;
+      left: ${matrix.tx + 20}px; top: ${matrix.ty - 60}px;
+    `;
+
+    const name = document.createElement('div');
+    name.textContent = bt.name;
+    name.style.cssText = 'font-weight: bold; color: #ffcc80; font-size: 14px; margin-bottom: 4px;';
+    tooltip.appendChild(name);
+
+    const desc = document.createElement('div');
+    desc.textContent = bt.description;
+    desc.style.cssText = 'color: #ccc; margin-bottom: 6px;';
+    tooltip.appendChild(desc);
+
+    const details = document.createElement('div');
+    details.style.cssText = 'color: #aaa; font-size: 11px;';
+    const catLabel = bt.category === 'revenue' ? '💰 Income' : bt.category === 'decor' ? '🌿 Decor' : '🔧 Service';
+    details.innerHTML = `
+      ${catLabel}<br>
+      Cost: <span style="color:#4caf50;">$${bt.cost.toLocaleString()}</span><br>
+      Size: ${bt.width}x${bt.height} tiles
+      ${building.typeKey === 'clubhouse' ? '<br><span style="color:#ff9800;">🏛️ Starting building — cannot be removed</span>' : ''}
+    `;
+    tooltip.appendChild(details);
+
+    document.body.appendChild(tooltip);
+    this.buildingTooltip = tooltip;
+
+    setTimeout(() => this.hideBuildingTooltip(), 3000);
+  }
+
+  private hideBuildingTooltip(): void {
+    if (this.buildingTooltip) {
+      this.buildingTooltip.remove();
+      this.buildingTooltip = null;
+    }
+  }
+
   // === GOLF SIMULATION (from PlayScene) ===
 
   private transitionToSwinging(golfer: Golfer): void {
@@ -1744,20 +1864,15 @@ export class BuilderScene extends Phaser.Scene {
     const sprite = this.golferSprites.get(golfer.id);
     if (!sprite) return;
 
-    const worldPos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
-    const cam = this.cameras.main;
-
-    // Convert world pos to screen coords
-    const screenX = worldPos.x - cam.scrollX;
-    const screenY = (worldPos.y - 4) - cam.scrollY;
-
+    // Use the sprite's actual world position (handles lerp + camera zoom/scroll)
+    const matrix = sprite.getWorldTransformMatrix();
     const el = document.createElement('div');
     el.style.cssText = `
       position: fixed; z-index: 300; pointer-events: none;
       font-family: sans-serif; font-size: 20px; text-align: center;
       color: #fff; font-weight: bold; line-height: 1.3;
       transition: opacity 2s ease-out, transform 2s ease-out;
-      left: ${screenX}px; top: ${screenY - 30}px;
+      left: ${matrix.tx}px; top: ${matrix.ty - 30}px;
       transform: translate(-50%, 0);
     `;
     el.innerHTML = `${emoji}<br><span style="font-size:14px;color:#4caf50;">+$${greensFee}</span>`;
@@ -1969,6 +2084,8 @@ export class BuilderScene extends Phaser.Scene {
     this.flagSprites.clear();
     this.vegetationOverlaySprites.forEach((s) => s.destroy());
     this.vegetationOverlaySprites.clear();
+    this.buildingSprites.forEach((s) => s.destroy());
+    this.buildingSprites.clear();
     this.golferSprites.forEach((s) => s.destroy());
     this.golferSprites.clear();
     this.activeBalls.forEach((b) => b.sprite.destroy());
@@ -1979,6 +2096,7 @@ export class BuilderScene extends Phaser.Scene {
     this.tracerGraphics = [];
     this.hideVegetationSidePanel();
     this.hideGolferTooltip();
+    this.hideBuildingTooltip();
     this.terrainPalette?.remove();
     document.getElementById('golfer-panel')?.remove();
     document.getElementById('music-player')?.remove();

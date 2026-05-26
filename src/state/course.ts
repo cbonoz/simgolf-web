@@ -1,5 +1,5 @@
 import { createStore } from 'zustand/vanilla';
-import { GRID_COLS, GRID_ROWS, TerrainType } from '../utils/constants';
+import { GRID_COLS, GRID_ROWS, TerrainType, BuildingType } from '../utils/constants';
 
 export interface Tile {
   type: TerrainType;
@@ -7,6 +7,12 @@ export interface Tile {
   isTee: boolean;
   isCup: boolean;
   vegetation: string | null; // sprite key for vegetation overlay
+}
+
+export interface PlacedBuilding {
+  typeKey: string;
+  col: number;
+  row: number;
 }
 
 export interface HoleConfig {
@@ -23,6 +29,7 @@ export interface CourseState {
   debt: number;
   reputation: number; // 1.0 - 5.0
   reputationHistory: number[]; // last 10 golfer satisfaction scores
+  buildings: PlacedBuilding[];
   setTile: (col: number, row: number, type: TerrainType) => void;
   setVegetation: (col: number, row: number, vegetation: string | null) => void;
   setTee: (holeId: number, col: number, row: number) => void;
@@ -42,6 +49,8 @@ export interface CourseState {
   repayLoan: (amount: number) => boolean;
   addReputation: (satisfaction: number) => void;
   getReputationMultiplier: () => number;
+  addBuilding: (typeKey: string, col: number, row: number) => void;
+  removeBuilding: (col: number, row: number) => void;
 }
 
 export interface CourseSaveData {
@@ -90,6 +99,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   debt: 0,
   reputation: 2.5,
   reputationHistory: [],
+  buildings: [{ typeKey: 'clubhouse', col: 1, row: 1 }],
 
   setTile: (col, row, type) =>
     set((state) => {
@@ -178,6 +188,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         debt: state.debt,
         reputation: state.reputation,
         reputationHistory: state.reputationHistory,
+        buildings: state.buildings,
         savedAt: new Date().toISOString(),
       }));
     } catch (e) {
@@ -197,6 +208,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         debt: data.debt ?? 0,
         reputation: data.reputation ?? 2.5,
         reputationHistory: data.reputationHistory ?? [],
+        buildings: data.buildings ?? [{ typeKey: 'clubhouse', col: 1, row: 1 }],
       });
       return true;
     } catch (e) {
@@ -226,11 +238,12 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       debt: 0,
       reputation: 2.5,
       reputationHistory: [],
+      buildings: [{ typeKey: 'clubhouse', col: 1, row: 1 }],
     });
   },
 
   serialize: () => {
-    const { grid, holes, money, debt, reputation, reputationHistory } = get();
+    const { grid, holes, money, debt, reputation, reputationHistory, buildings } = get();
     const data: CourseSaveData = {
       version: SAVE_VERSION,
       grid,
@@ -239,6 +252,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       debt,
       reputation,
       reputationHistory,
+      buildings,
       savedAt: new Date().toISOString(),
     };
     return JSON.stringify(data);
@@ -257,6 +271,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         debt: data.debt ?? 0,
         reputation: data.reputation ?? 2.5,
         reputationHistory: data.reputationHistory ?? [],
+        buildings: data.buildings ?? [{ typeKey: 'clubhouse', col: 1, row: 1 }],
       });
       return true;
     } catch (e) {
@@ -298,4 +313,20 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
     // 1.0 = 0.6x, 2.5 = 1.0x, 5.0 = 1.6x
     return 0.6 + (rep - 1.0) * 0.25;
   },
+
+  addBuilding: (typeKey, col, row) =>
+    set((state) => ({
+      buildings: [...state.buildings, { typeKey, col, row }],
+    })),
+
+  removeBuilding: (col, row) =>
+    set((state) => ({
+      // Clubhouse can't be removed — it's the default starting building
+      buildings: state.buildings.filter((b) => {
+        if (b.col === col && b.row === row) {
+          return b.typeKey === 'clubhouse'; // don't remove clubhouse
+        }
+        return true;
+      }),
+    })),
 }));

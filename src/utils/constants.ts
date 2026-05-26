@@ -103,6 +103,26 @@ export const TERRAIN_EFFECTS: Record<TerrainType, TerrainEffect> = {
   green: { lieQuality: 1.0, distanceModifier: 1.0, isHazard: false, isObstacle: false, puttingAllowed: true },
 };
 
+// Building types
+export interface BuildingType {
+  key: string;
+  name: string;
+  cost: number;
+  width: number; // tiles wide
+  height: number; // tiles tall
+  description: string;
+  category: 'service' | 'decor' | 'revenue';
+}
+
+export const BUILDING_TYPES: BuildingType[] = [
+  { key: 'clubhouse', name: 'Clubhouse', cost: 500, width: 2, height: 2, description: 'Generates daily income', category: 'revenue' },
+  { key: 'shop', name: 'Pro Shop', cost: 300, width: 1, height: 1, description: 'Sells equipment — bonus income', category: 'revenue' },
+  { key: 'snack_bar', name: 'Snack Bar', cost: 200, width: 1, height: 1, description: 'Concessions revenue', category: 'revenue' },
+  { key: 'bench', name: 'Rest Bench', cost: 50, width: 1, height: 1, description: 'Boosts reputation', category: 'decor' },
+  { key: 'fountain', name: 'Fountain', cost: 150, width: 1, height: 1, description: 'Beautiful water feature', category: 'decor' },
+  { key: 'garden', name: 'Garden', cost: 100, width: 2, height: 1, description: 'Lush landscaping', category: 'decor' },
+];
+
 // Game settings
 export const MAX_STROKES_PER_HOLE = 9;
 export const MAX_GOLFERS_ON_COURSE = 12;

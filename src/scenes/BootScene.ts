@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { TILE_WIDTH, TILE_HEIGHT, TERRAIN_COLORS, TerrainType, TERRAIN_TYPES, VEGETATION_TYPES } from '../utils/constants';
+import { TILE_WIDTH, TILE_HEIGHT, TERRAIN_COLORS, TerrainType, TERRAIN_TYPES, VEGETATION_TYPES, BUILDING_TYPES } from '../utils/constants';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -20,6 +20,7 @@ export class BootScene extends Phaser.Scene {
     console.log('[Boot] Generating textures...');
     this.generateTileTextures();
     this.generateEntityTextures();
+    this.generateBuildingTextures();
     console.log('[Boot] Textures generated, starting TitleScene');
     this.scene.start('TitleScene');
   }
@@ -206,5 +207,94 @@ export class BootScene extends Phaser.Scene {
     cursorG.strokePath();
     cursorG.generateTexture('cursor', 64, 32);
     cursorG.destroy();
+  }
+
+  private generateBuildingTextures(): void {
+    for (const bld of BUILDING_TYPES) {
+      const g = this.add.graphics();
+      const w = TILE_WIDTH * (bld.width === 2 ? 2 : 1) + 16;
+      const h = TILE_HEIGHT * (bld.height >= 2 ? 3 : 2) + 16;
+
+      const bldColor = bld.category === 'revenue' ? 0x8B7355 : bld.category === 'decor' ? 0x6b8e6b : 0x7a6b5a;
+      const roofColor = bld.category === 'revenue' ? 0xc0392b : bld.category === 'decor' ? 0x5b9bd5 : 0xe67e22;
+      const trimColor = bld.category === 'revenue' ? 0xd4a76a : bld.category === 'decor' ? 0x8fbc8f : 0xf39c12;
+
+      const cw = w / 2;
+      const ch = h * 0.3;
+
+      // Building body
+      g.fillStyle(bldColor, 1);
+      g.beginPath();
+      g.moveTo(cw, ch);
+      g.lineTo(cw + w * 0.4, ch + h * 0.25);
+      g.lineTo(cw + w * 0.4, ch + h * 0.65);
+      g.lineTo(cw, ch + h * 0.9);
+      g.lineTo(cw - w * 0.4, ch + h * 0.65);
+      g.lineTo(cw - w * 0.4, ch + h * 0.25);
+      g.closePath();
+      g.fillPath();
+
+      // Front face detail
+      g.fillStyle(bldColor + 0x0a0a0a, 0.8);
+      g.beginPath();
+      g.moveTo(cw, ch);
+      g.lineTo(cw + w * 0.4, ch + h * 0.25);
+      g.lineTo(cw + w * 0.4, ch + h * 0.65);
+      g.lineTo(cw, ch + h * 0.9);
+      g.lineTo(cw, ch + h * 0.9 - 4);
+      g.lineTo(cw + w * 0.4 - 4, ch + h * 0.65 - 2);
+      g.lineTo(cw + w * 0.4 - 4, ch + h * 0.25 + 2);
+      g.lineTo(cw, ch + 4);
+      g.closePath();
+      g.fillPath();
+
+      // Roof
+      g.fillStyle(roofColor, 1);
+      g.beginPath();
+      g.moveTo(cw, ch - h * 0.2);
+      g.lineTo(cw + w * 0.45, ch + h * 0.05);
+      g.lineTo(cw, ch + h * 0.3);
+      g.lineTo(cw - w * 0.45, ch + h * 0.05);
+      g.closePath();
+      g.fillPath();
+
+      g.lineStyle(2, 0xffffff, 0.2);
+      g.beginPath();
+      g.moveTo(cw, ch - h * 0.2);
+      g.lineTo(cw - w * 0.45, ch + h * 0.05);
+      g.strokePath();
+
+      g.lineStyle(2, trimColor, 0.8);
+      g.beginPath();
+      g.moveTo(cw - w * 0.4, ch + h * 0.05);
+      g.lineTo(cw + w * 0.4, ch + h * 0.05);
+      g.strokePath();
+
+      // Door
+      g.fillStyle(0x5c3a1e, 0.9);
+      g.fillRect(cw - 4, ch + h * 0.4, 8, h * 0.3);
+
+      // Windows
+      g.fillStyle(0x87ceeb, 0.6);
+      if (bld.width >= 2) {
+        g.fillRect(cw - w * 0.2, ch + h * 0.25, 6, 8);
+        g.fillRect(cw + w * 0.1, ch + h * 0.25, 6, 8);
+      } else {
+        g.fillRect(cw + w * 0.12, ch + h * 0.25, 6, 8);
+      }
+
+      // Shadow
+      g.fillStyle(0x000000, 0.15);
+      g.beginPath();
+      g.moveTo(cw - w * 0.3, ch + h * 0.9);
+      g.lineTo(cw + w * 0.3, ch + h * 0.9);
+      g.lineTo(cw + w * 0.5, ch + h * 0.75);
+      g.lineTo(cw, ch + h * 0.55);
+      g.closePath();
+      g.fillPath();
+
+      g.generateTexture(`building_${bld.key}`, w, h + 8);
+      g.destroy();
+    }
   }
 }
