@@ -24,3 +24,8 @@ ID,Milestone,Task,Status,Notes
 23,M6 - Unified Build+Play,Merge BuilderScene + PlayScene into unified GameScene,completed,Golfers always visible and active while building. No more scene transitions. Removed PlayScene.ts.
 24,M6 - Unified Build+Play,Time controls (pause / 1x / 2x / 5x),completed,Added time control buttons in builder UI. Golfers only update when unpaused. Scaled delta by timeScale.
 25,M6 - Unified Build+Play,Click-to-inspect golfers + thought bubbles,completed,Clicking a golfer shows a tooltip with name, skill, stats, and a thought/reaction based on current state and terrain. Auto-hides after 3s.
+26,M7 - Bug Fixes,Fix simultaneous ball flight overwrite,completed,Changed activeBall: Ball|null to activeBalls: Map<number,Ball>. Multiple golfers can swing simultaneously without overwriting each other's ball flights.
+27,M7 - Bug Fixes,Fix golfer count showing completed golfers,completed,updateGolferCount() now filters out round_complete golfers so count reflects only active players.
+28,M7 - Bug Fixes,Fix sprite/Map leaks in shutdown,completed,shutdown() now clears teeSprites, flagSprites, vegetationOverlaySprites, golferSprites, and activeBalls Maps after destroying sprites.
+29,M7 - Bug Fixes,Fix resetCourse not clearing localStorage,completed,resetCourse() now calls localStorage.removeItem('simgolf_course_v1') before resetting Zustand state so New Course actually wipes the save.
+30,M7 - Bug Fixes,Add overwrite warning modal on New Course,completed,TitleScene shows a warning modal when New Course is clicked and a save exists. Options: Cancel or Start New Course (which now actually clears the save).
