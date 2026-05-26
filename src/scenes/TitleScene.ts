@@ -61,13 +61,8 @@ export class TitleScene extends Phaser.Scene {
     newCourseBtn.on('pointerover', () => newCourseBtn.setColor('#81c784'));
     newCourseBtn.on('pointerout', () => newCourseBtn.setColor('#4caf50'));
     newCourseBtn.on('pointerdown', () => {
-      const hasExistingSave = courseStore.getState().hasLocalSave();
-      if (hasExistingSave) {
-        this.showNewCourseModal();
-      } else {
-        courseStore.getState().resetCourse();
-        this.scene.start('BuilderScene');
-      }
+      courseStore.getState().resetCourse();
+      this.scene.start('BuilderScene');
     });
 
     // Load Save button
@@ -136,68 +131,5 @@ export class TitleScene extends Phaser.Scene {
     github.on('pointerdown', () => {
       window.open('https://github.com/cbonoz/simgolf-web', '_blank');
     });
-  }
-
-  private showNewCourseModal(): void {
-    // Darken background
-    const overlay = document.createElement('div');
-    overlay.id = 'new-course-modal-overlay';
-    overlay.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7); z-index: 500; display: flex;
-      align-items: center; justify-content: center;
-    `;
-
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-      background: #2a2a2a; border: 2px solid #555; border-radius: 12px;
-      padding: 24px 32px; max-width: 400px; text-align: center;
-      font-family: sans-serif; color: #fff;
-    `;
-
-    const title = document.createElement('div');
-    title.textContent = '⚠️ Overwrite Existing Course?';
-    title.style.cssText = 'font-size: 18px; font-weight: bold; color: #ff9800; margin-bottom: 12px;';
-    modal.appendChild(title);
-
-    const body = document.createElement('div');
-    body.style.cssText = 'font-size: 14px; color: #ccc; line-height: 1.5; margin-bottom: 20px;';
-    body.innerHTML = `
-      You already have a saved course.<br><br>
-      Starting a <strong>new course</strong> will erase your current progress.<br><br>
-      💾 <strong>Save first</strong> if you want to keep it!
-    `;
-    modal.appendChild(body);
-
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display: flex; gap: 12px; justify-content: center;';
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.cssText = `
-      padding: 10px 20px; border: 2px solid #555; border-radius: 6px;
-      cursor: pointer; font-size: 14px; background: #444; color: #ccc;
-      font-weight: bold;
-    `;
-    cancelBtn.addEventListener('click', () => overlay.remove());
-    btnRow.appendChild(cancelBtn);
-
-    const confirmBtn = document.createElement('button');
-    confirmBtn.textContent = 'Start New Course';
-    confirmBtn.style.cssText = `
-      padding: 10px 20px; border: 2px solid #ef5350; border-radius: 6px;
-      cursor: pointer; font-size: 14px; background: #c62828; color: #fff;
-      font-weight: bold;
-    `;
-    confirmBtn.addEventListener('click', () => {
-      courseStore.getState().resetCourse();
-      overlay.remove();
-      this.scene.start('BuilderScene');
-    });
-    btnRow.appendChild(confirmBtn);
-
-    modal.appendChild(btnRow);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
   }
 }
