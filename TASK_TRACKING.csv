@@ -1,40 +1,32 @@
-ID,Milestone,Task,Status,Notes
-1,M2 - Course Builder,Hole mode — place tee + cup for 9 holes,completed,Mode toggle (Paint/Hole). Hole selector 1-9. Tee/cup placement with validation (fairway/green only). Tee marker + flag sprites rendered. Auto-calculates par on cup placement.
-2,M2 - Course Builder,Undo/redo for builder,completed,Full state snapshot undo/redo. Ctrl+Z undo / Ctrl+Shift+Z or Ctrl+Y redo. Batches entire drag strokes as single undo action.
-3,M2 - Course Builder,Save/load course to localStorage,completed,Auto-saves grid + holes + money after every action. Loads on BuilderScene init if present. 'New Course' button with confirm dialog.
-4,M3 - Golfer AI,PlayScene scaffold + scene transition from builder,completed,OBSOLETE — PlayScene was removed in M6. Kept for historical tracking. All play logic now lives in BuilderScene.
-5,M3 - Golfer AI,Golfer Zustand store + data model,completed,Created src/state/golfers.ts. Golfer interface with id, name, skill (0.3-0.9), colorIndex, currentHole, tilePos, strokes, state machine, scorecard. Store: golfers[], nextId, spawnGolfer(), removeGolfer(), updateGolfer(), resetGolfers().
-6,M3 - Golfer AI,Render golfer sprites at tee positions,completed,BuilderScene spawns golfers at Hole 1 tee using colored dot sprites (golfer_0 to golfer_4). Depth sorting by col+row. Up to 8 concurrent golfers.
-7,M3 - Golfer AI,Golfer state machine with timed transitions,completed,ADDRESS (0.6s) → SWING (0.4s) → BALL_FLIGHT (ball animation) → REACT (0.4-0.8s) → next stroke or HOLE_COMPLETE → next hole. Implemented in BuilderScene.update() state machine.
-8,M3 - Golfer AI,Ball entity + isometric flight interpolation,completed,Created src/entities/Ball.ts. White ball sprite moves from tile to tile over 0.5s with linear interpolation + parabolic arc (sin(π*progress) * arcHeight).
-9,M3 - Golfer AI,Stroke direction + distance + skill-based error,completed,Calculates ideal vector toward cup. Club selection based on distance remaining (1-8 tiles). Random angle error scaled by (1-skill). Distance error ±15% * (1-skill).
-10,M3 - Golfer AI,Terrain effects on ball landing,completed,Fairway=full distance, rough=80% lie, sand=60%+hazard, water=penalty+reset to previous, trees=stop, green=putting mode. Uses TERRAIN_EFFECTS from constants.
-11,M3 - Golfer AI,Green putting + hole completion,completed,If ball on green within skill*3 tiles of cup → putt goes in (snaps to cup). Max 10 strokes per hole. Stroke count tracked per golfer.
-12,M3 - Golfer AI,Hole-to-hole transition + round completion,completed,After hole complete: teleport to next tee, reset strokes, carry total. After hole 9: golfer removed, round completion bonus added ($20-50 based on skill), scorecard stored.
-13,M3 - Golfer AI,Scorecard UI overlay,completed,Live HTML table in BuilderScene showing golfer #, current hole, hole strokes, total strokes. Updates every frame.
-14,M3 - Golfer AI,Golfer spawner with day schedule,completed,Spawns 1 golfer every 4s up to max 8 concurrent. Starts at Hole 1 tee. Simplified from full day cycle — spawns continuously while scene is active.
-15,M3 - Golfer AI,Water hazard splash animation,post_mvp,Has penalty logic (reset to previous + +1 stroke) but no visual splash particle effect. Add splash burst animation when ball lands in water.
-16,M4 - Economy & Day Cycle,Zustand economy store + starting funds,post_mvp,Create src/state/economy.ts with money, revenue, expenses, reputation. Integrate with existing courseStore money or separate.
-17,M4 - Economy & Day Cycle,Green fees + reputation per golfer,completed,Greens fee paid on every hole completion: $5 + par ($8 for par-3, $9 for par-4, $10 for par-5). Round completion bonus: $20 + skill*30. Economy lives in courseStore.
-18,M4 - Economy & Day Cycle,Day/night cycle with Phaser timeScale,post_mvp,1 real second = 1 game minute. Day phases: morning (6-10), peak (10-18), evening (18-20), night (20-6). Speed controls: pause, 1x, 2x, 5x.
-19,M4 - Economy & Day Cycle,DaySummaryScene overlay,post_mvp,At night: show modal with golfers served, revenue, expenses, profit, reputation change. 'Continue to Builder' button.
-20,M5 - Polish & Juice,Golfer reaction animations,post_mvp,Celebration: scale bounce + green flash on good putt. Frustration: red tint + shake on water/tree hit. Brief thought bubble before swing.
-21,M5 - Polish & Juice,Sound effects,post_mvp,Club swing, ball splash, hole-in-one cheer, crowd cheer.
-22,M5 - Polish & Juice,Deploy to GitHub Pages,post_mvp,Build with bunx vite build, configure base path, push dist/ to gh-pages branch or use GitHub Action.
-23,M6 - Unified Build+Play,Merge BuilderScene + PlayScene into unified GameScene,completed,Golfers always visible and active while building. No more scene transitions. Removed PlayScene.ts.
-24,M6 - Unified Build+Play,Time controls (pause / 1x / 2x / 5x),completed,Added time control buttons in builder UI. Golfers only update when unpaused. Scaled delta by timeScale.
-25,M6 - Unified Build+Play,Click-to-inspect golfers + thought bubbles,completed,Clicking a golfer shows a tooltip with name, skill, stats, and a thought/reaction based on current state and terrain. Auto-hides after 3s.
-26,M4 - Economy & Day Cycle,Reputation system core — rolling average + golfer satisfaction tracking,completed,Add reputation field to courseStore. Track per-golfer: water hits tree hits strokes vs par. Compute satisfaction on round complete. Update rolling reputation (last 10 rounds). Scale green fees by reputation.
-27,M4 - Economy & Day Cycle,Reputation UI — star rating display in money bar,pending,Render 1-5 star rating next to money display. Update in real-time as reputation changes.
-26,M7 - Bug Fixes,Fix simultaneous ball flight overwrite,completed,Changed activeBall: Ball|null to activeBalls: Map<number,Ball>. Multiple golfers can swing simultaneously without overwriting each other's ball flights.
-27,M7 - Bug Fixes,Fix golfer count showing completed golfers,completed,updateGolferCount() now filters out round_complete golfers so count reflects only active players.
-28,M7 - Bug Fixes,Fix sprite/Map leaks in shutdown,completed,shutdown() now clears teeSprites, flagSprites, vegetationOverlaySprites, golferSprites, and activeBalls Maps after destroying sprites.
-29,M7 - Bug Fixes,Fix resetCourse not clearing localStorage,completed,resetCourse() now calls localStorage.removeItem('simgolf_course_v1') before resetting Zustand state so New Course actually wipes the save.
-30,M7 - Bug Fixes,Add overwrite warning modal on New Course,completed,TitleScene shows a warning modal when New Course is clicked and a save exists. Options: Cancel or Start New Course (which now actually clears the save).
-31,M8 - Buildings,Add building system — clubhouse, shop, decor for course,post_mvp,New building type alongside terrain/vegetation. Clubhouse generates daily income. Shop sells items. Decor boosts reputation. Rendered as isometric sprites on grid tiles. Cost/purchase from builder palette. Building data model in courseStore. Save/load with course.
-32,M8 - Play Mode,1:1 Challenge Mode — play the course as a golfer,post_mvp,Switch from spectator to active play. Click to aim shot direction. Power bar for shot strength. Terrain effects apply to your ball. Scorecard for your round. Leaderboard vs AI scores. Restart challenge button.
-33,M8 - Buildings,Default clubhouse procedural sprite + forced placement at (1,1),completed,Clubhouse auto-placed on new course. Procedural isometric building texture generated in BootScene. Renders in BuilderScene with depth sorting. Protected from removal. Click to inspect tooltip with name/description/cost/size.
-34,M8 - Buildings,Building palette in builder UI — purchase and place buildings,pending,Add a Buildings tab to the builder mode alongside Paint and Holes. List available buildings with name, cost, description. Click to select, then click tile to place. Money deducted on placement via courseStore.spendMoney(). Render building on grid.
-35,M8 - Buildings,Building delete mode — right-click or X to remove,post_mvp,Add delete mode for buildings. Clicking a placed building shows a delete option. Clubhouse is protected from deletion. Refund partial cost on removal.
-36,M8 - Buildings,Building revenue tick — daily income from active buildings,pending,Clubhouse and revenue buildings generate income each 'day'. Shop adds bonus per golfer round. Track building revenue separately in economics. Show daily income breakdown in tooltip. Scale income by building count and course reputation.
-37,M8 - Buildings,Decor building reputation bonuses,pending,Benches, fountains, gardens boost reputation over time. Decor buildings near tees/greens give bigger local bonus. Show reputation contribution in building tooltip. Visual indicator when decor is placed near hole features.
+ID,Track,Feature,Phase,Status,Effort,Priority,Notes
+1,course_builder,"Hole mode — place tee + cup for 9 holes",core,completed,M,medium,—
+2,course_builder,"Undo/redo for builder",core,completed,M,medium,—
+3,course_builder,"Save/load course to localStorage",core,completed,S,high,—
+4,golfer_ai,"Golfer data model + spawner",core,completed,S,high,—
+5,golfer_ai,"State machine: address→swing→flight→react→walk",core,completed,L,high,"Timing in GAME_CONFIG"
+6,golfer_ai,"Ball entity + isometric flight arc",core,completed,S,high,—
+7,golfer_ai,"Stroke logic: direction, distance, skill error",core,completed,M,high,—
+8,golfer_ai,"Terrain effects (rough, sand, water, trees, green)",core,completed,M,high,"Lie quality + distance modifiers"
+9,golfer_ai,"Putting + hole-out logic",core,completed,S,high,"Putt range = skill*3. Accurate Putter +50%"
+10,golfer_ai,"Hole-to-hole transition + round scoring",core,completed,M,high,"Greens fees, scorecard"
+11,golfer_ai,"Golfer personality traits + skills (long drive, putting, etc)",core,completed,M,high,"8 traits, 10 skills. Random 1-3 per golfer"
+12,golfer_ai,"Tree collision — Bresenham path trace + scatter",core,completed,S,high,"Deflects ball. Scatter if blocked on start tile"
+13,golfer_ai,"Walk from clubhouse → tee → ball → clubhouse",core,completed,M,high,"Spawn at clubhouse. Return after round"
+14,economy,"Green fees + round bonus + reputation scaling",core,completed,M,high,"$5+par fee. $20+skill*30 bonus. 0.6x-1.6x multiplier"
+15,economy,"Reputation system (rolling avg, satisfaction)",core,completed,M,high,"10-round avg. Hazard penalties. Star display"
+16,economy,"Loan system (borrow, repay, net worth)",core,completed,S,medium,"Take loans from money display"
+17,buildings,"6 building types defined (clubhouse, shop, snack, bench, fountain, garden)",core,completed,S,high,"constants.ts with costs, sizes, categories"
+18,buildings,"Procedural isometric building textures by category",core,completed,M,high,"BootScene. Revenue=red roof, Decor=blue roof"
+19,buildings,"Default clubhouse auto-placed, spawn from + return to it",core,completed,S,high,"Protected from removal. Helper function"
+20,buildings,"Click building → tooltip (name, desc, cost, size, category)",core,completed,S,medium,"Protected badge for clubhouse"
+21,buildings,"Building palette in builder paint mode",phase2,pending,M,high,"Buy/place with money. Deduct from store."
+22,buildings,"Building revenue tick (daily income)",phase2,pending,L,high,"Clubhouse, shop, snack bar generate $ each day"
+23,buildings,"Decor building reputation bonuses",phase2,pending,M,medium,"Benches, fountain, garden boost rep over time"
+24,buildings,"Building delete mode",phase2,pending,S,medium,"Right-click or X. Refund partial cost."
+25,economy,"Day/night cycle with timeScale speeds",phase2,pending,M,medium,"1s = 1 game min. Phases: morning, peak, evening, night"
+26,economy,"Day summary overlay (revenue, expenses, profit, rep)",phase2,pending,M,medium,"Modal at night. Continue to builder button."
+27,play_mode,"1:1 Challenge Mode — play as a golfer",phase2,pending,L,high,"Aim cursor, power bar, terrain rules, scorecard"
+28,polish,"Water splash visual effect",phase3,pending,S,low,"Particle burst when ball lands in water"
+29,polish,"Golfer reaction animations (celebration / frustration)",phase3,pending,S,low,"Scale bounce on birdie, shake on hazard"
+30,polish,"Deploy to GitHub Pages",phase3,pending,S,medium,"Configure base path. gh-pages branch or action."
+31,polish,"Star rating UI in money bar",pending,pending,S,low,"Render ⭐ 1-5 next to money. Real-time update."
