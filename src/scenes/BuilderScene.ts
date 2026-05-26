@@ -130,9 +130,43 @@ export class BuilderScene extends Phaser.Scene {
     const store = courseStore.getState();
     const hole1 = store.holes.find((h) => h.id === 1);
     if (!hole1?.tee) return;
-    for (let i = 0; i < 3; i++) {
-      this.spawnGolfer();
-    }
+    // Spawn one pair (2 golfers) + one solo = 3 initial golfers
+    this.spawnGolferPair();
+    this.spawnGolfer();
+  }
+
+  private spawnGolferPair(): [Golfer, Golfer] | null {
+    const store = courseStore.getState();
+    const hole1 = store.holes.find((h) => h.id === 1);
+    if (!hole1?.tee) return null;
+
+    const gStore = golferStore.getState();
+    if (gStore.golfers.length + 2 > this.MAX_GOLFERS) return null;
+
+    // Spawn two golfers with slight offset
+    const golferA = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    const golferB = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    if (!golferA || !golferB) return null;
+
+    // Offset B slightly so they don't perfectly overlap
+    golferB.tilePos = { col: hole1.tee.col, row: hole1.tee.row };
+
+    const posA = this.tileToWorld(golferA.tilePos.col, golferA.tilePos.row);
+    const posB = this.tileToWorld(golferB.tilePos.col, golferB.tilePos.row);
+
+    const spriteA = this.add.sprite(posA.x - 3, posA.y - 4, `golfer_${golferA.colorIndex}`);
+    spriteA.setOrigin(0.5, 1);
+    spriteA.setScale(1.0);
+    spriteA.setDepth(this.getGolferDepth(golferA.tilePos.col, golferA.tilePos.row));
+    this.golferSprites.set(golferA.id, spriteA);
+
+    const spriteB = this.add.sprite(posB.x + 3, posB.y - 4, `golfer_${golferB.colorIndex}`);
+    spriteB.setOrigin(0.5, 1);
+    spriteB.setScale(1.0);
+    spriteB.setDepth(this.getGolferDepth(golferB.tilePos.col, golferB.tilePos.row));
+    this.golferSprites.set(golferB.id, spriteB);
+
+    return [golferA, golferB];
   }
 
   private spawnGolfer(): Golfer | null {
@@ -149,6 +183,7 @@ export class BuilderScene extends Phaser.Scene {
     const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
     const sprite = this.add.sprite(pos.x, pos.y - 4, `golfer_${golfer.colorIndex}`);
     sprite.setOrigin(0.5, 1);
+    sprite.setScale(0.9); // Slightly smaller than pair sprites
     sprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row));
     this.golferSprites.set(golfer.id, sprite);
 
@@ -1159,11 +1194,15 @@ export class BuilderScene extends Phaser.Scene {
       }
     }
 
-    // Spawn timer
+    // Spawn timer — spawn in pairs
     this.spawnTimer += scaledDelta;
     if (this.spawnTimer >= this.SPAWN_INTERVAL) {
       this.spawnTimer = 0;
-      this.spawnGolfer();
+      // Try pair first, fall back to solo if near capacity
+      const pair = this.spawnGolferPair();
+      if (!pair) {
+        this.spawnGolfer();
+      }
     }
 
     // Update each golfer
@@ -1197,7 +1236,7 @@ export class BuilderScene extends Phaser.Scene {
       }
     }
 
-    // Sync sprite positions
+    // Sync sprite positions — pairs get slight x-offset
     this.syncGolferSprites();
 
     // Update UI
@@ -1207,12 +1246,29 @@ export class BuilderScene extends Phaser.Scene {
 
   private syncGolferSprites(): void {
     const gStore = golferStore.getState();
+    // Group golfers by tile position to detect pairs
+    const tileGroups = new Map<string, Golfer[]>();
     for (const golfer of gStore.golfers) {
-      const sprite = this.golferSprites.get(golfer.id);
-      if (sprite) {
-        const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
-        sprite.setPosition(pos.x, pos.y - 4);
-        sprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row));
+      const key = `${golfer.tilePos.col},${golfer.tilePos.row}`;
+      const group = tileGroups.get(key) ?? [];
+      group.push(golfer);
+      tileGroups.set(key, group);
+    }
+
+    for (const [_, golfers] of tileGroups) {
+      // Sort by ID for stable ordering
+      golfers.sort((a, b) => a.id - b.id);
+      const count = golfers.length;
+      for (let i = 0; i < count; i++) {
+        const golfer = golfers[i];
+        const sprite = this.golferSprites.get(golfer.id);
+        if (sprite) {
+          const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
+          // Spread multiple golfers on same tile horizontally
+          const spreadX = count === 1 ? 0 : (i - (count - 1) / 2) * 6;
+          sprite.setPosition(pos.x + spreadX, pos.y - 4);
+          sprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row) + i * 0.01);
+        }
       }
     }
   }

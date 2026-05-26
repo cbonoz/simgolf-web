@@ -114,15 +114,50 @@ export class BootScene extends Phaser.Scene {
   }
 
   private generateEntityTextures(): void {
-    // Golfer (small colored circles)
-    const golferColors = [0xe74c3c, 0x3498db, 0xf1c40f, 0x2ecc71, 0xe67e22];
-    golferColors.forEach((color, i) => {
+    // Golfer icons — humanoid shapes with shirt + pants + hat
+    const golferPalettes = [
+      { shirt: 0xe74c3c, pants: 0xffffff, hat: 0xe74c3c }, // Red
+      { shirt: 0x3498db, pants: 0xffffff, hat: 0x3498db }, // Blue
+      { shirt: 0xf1c40f, pants: 0x2c3e50, hat: 0xf1c40f }, // Yellow
+      { shirt: 0x2ecc71, pants: 0xffffff, hat: 0x2ecc71 }, // Green
+      { shirt: 0xe67e22, pants: 0xecf0f1, hat: 0xe67e22 }, // Orange
+      { shirt: 0x9b59b6, pants: 0xffffff, hat: 0x9b59b6 }, // Purple
+      { shirt: 0x1abc9c, pants: 0x2c3e50, hat: 0x1abc9c }, // Teal
+      { shirt: 0xe91e63, pants: 0xffffff, hat: 0xe91e63 }, // Pink
+    ];
+
+    golferPalettes.forEach((palette, i) => {
       const g = this.add.graphics();
-      g.fillStyle(color, 1);
-      g.fillCircle(8, 8, 6);
-      g.lineStyle(1, 0x000000, 0.3);
-      g.strokeCircle(8, 8, 6);
-      g.generateTexture(`golfer_${i}`, 16, 16);
+      const w = 14;
+      const h = 20;
+
+      // Body (shirt) — rounded rectangle
+      g.fillStyle(palette.shirt, 1);
+      g.fillRoundedRect(2, 6, w - 4, 8, 2);
+
+      // Head
+      g.fillStyle(0xffdbac, 1); // skin tone
+      g.fillCircle(w / 2, 5, 3);
+
+      // Hat
+      g.fillStyle(palette.hat, 1);
+      g.fillRoundedRect(1, 1, w - 2, 3, 1);
+      g.fillRect(0, 3, w, 1);
+
+      // Pants
+      g.fillStyle(palette.pants, 1);
+      g.fillRoundedRect(3, 12, w - 6, 6, 1);
+
+      // Shoes
+      g.fillStyle(0x333333, 1);
+      g.fillRect(3, 18, 3, 2);
+      g.fillRect(w - 6, 18, 3, 2);
+
+      // Shadow
+      g.fillStyle(0x000000, 0.15);
+      g.fillEllipse(w / 2, h - 1, w - 2, 3);
+
+      g.generateTexture(`golfer_${i}`, w, h + 2);
       g.destroy();
     });
 
