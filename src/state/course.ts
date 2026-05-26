@@ -30,6 +30,8 @@ export interface CourseState {
   reputation: number; // 1.0 - 5.0
   reputationHistory: number[]; // last 10 golfer satisfaction scores
   buildings: PlacedBuilding[];
+  courseRecord: number | null; // best total strokes (lower = better)
+  courseRecordDate: string | null; // ISO date when record was set
   setTile: (col: number, row: number, type: TerrainType) => void;
   setVegetation: (col: number, row: number, vegetation: string | null) => void;
   setTee: (holeId: number, col: number, row: number) => void;
@@ -51,6 +53,7 @@ export interface CourseState {
   getReputationMultiplier: () => number;
   addBuilding: (typeKey: string, col: number, row: number) => void;
   removeBuilding: (col: number, row: number) => void;
+  setCourseRecord: (strokes: number, date: string) => void;
 }
 
 export interface CourseSaveData {
@@ -62,6 +65,8 @@ export interface CourseSaveData {
   reputation: number;
   reputationHistory: number[];
   buildings?: PlacedBuilding[];
+  courseRecord?: number | null;
+  courseRecordDate?: string | null;
   savedAt: string;
 }
 
@@ -116,6 +121,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   reputation: 2.5,
   reputationHistory: [],
   buildings: defaultBuildings(),
+  courseRecord: null,
+  courseRecordDate: null,
 
   setTile: (col, row, type) =>
     set((state) => {
@@ -205,6 +212,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         reputation: state.reputation,
         reputationHistory: state.reputationHistory,
         buildings: state.buildings,
+        courseRecord: state.courseRecord,
+        courseRecordDate: state.courseRecordDate,
         savedAt: new Date().toISOString(),
       }));
     } catch (e) {
@@ -225,6 +234,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         reputation: data.reputation ?? 2.5,
         reputationHistory: data.reputationHistory ?? [],
         buildings: data.buildings ?? defaultBuildings(),
+        courseRecord: data.courseRecord ?? null,
+        courseRecordDate: data.courseRecordDate ?? null,
       });
       return true;
     } catch (e) {
@@ -255,11 +266,13 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       reputation: 2.5,
       reputationHistory: [],
       buildings: defaultBuildings(),
+      courseRecord: null,
+      courseRecordDate: null,
     });
   },
 
   serialize: () => {
-    const { grid, holes, money, debt, reputation, reputationHistory, buildings } = get();
+    const { grid, holes, money, debt, reputation, reputationHistory, buildings, courseRecord, courseRecordDate } = get();
     const data: CourseSaveData = {
       version: SAVE_VERSION,
       grid,
@@ -269,6 +282,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       reputation,
       reputationHistory,
       buildings,
+      courseRecord,
+      courseRecordDate,
       savedAt: new Date().toISOString(),
     };
     return JSON.stringify(data);
@@ -288,6 +303,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         reputation: data.reputation ?? 2.5,
         reputationHistory: data.reputationHistory ?? [],
         buildings: data.buildings ?? defaultBuildings(),
+        courseRecord: data.courseRecord ?? null,
+        courseRecordDate: data.courseRecordDate ?? null,
       });
       return true;
     } catch (e) {
@@ -345,4 +362,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         return true;
       }),
     })),
+
+  setCourseRecord: (strokes, date) =>
+    set({ courseRecord: strokes, courseRecordDate: date }),
 }));

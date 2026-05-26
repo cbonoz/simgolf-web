@@ -51,6 +51,7 @@ export class BuilderScene extends Phaser.Scene {
   private readonly MIN_GOLFERS = GAME_CONFIG.MIN_GOLFERS;
   private timeScale = 1;
   private scorecardEl!: HTMLDivElement;
+  private courseRecordEl!: HTMLDivElement;
   private timeControlsContainer!: HTMLDivElement;
   private golferTooltip: HTMLDivElement | null = null;
   private golferCountDisplay!: HTMLDivElement;
@@ -880,6 +881,12 @@ export class BuilderScene extends Phaser.Scene {
     this.golferCountDisplay.textContent = '0 golfers on course';
     playSection.appendChild(this.golferCountDisplay);
 
+    // Course record display
+    this.courseRecordEl = document.createElement('div');
+    this.courseRecordEl.style.cssText = 'color: #ffd700; font-size: 11px; margin-top: 2px;';
+    this.courseRecordEl.textContent = '';
+    playSection.appendChild(this.courseRecordEl);
+
     // Scorecard
     this.scorecardEl = document.createElement('div');
     this.scorecardEl.style.cssText = 'color: #ccc; font-size: 10px; line-height: 1.4; max-height: 180px; overflow-y: auto;';
@@ -1399,6 +1406,19 @@ export class BuilderScene extends Phaser.Scene {
     const gStore = golferStore.getState();
     const active = gStore.golfers.filter((g) => g.onCourse && g.state !== 'round_complete').length;
     this.golferCountDisplay.textContent = `${active} golfer${active !== 1 ? 's' : ''} on course`;
+
+    // Update course record display
+    const store = courseStore.getState();
+    if (store.courseRecord !== null && store.courseRecordDate) {
+      const date = new Date(store.courseRecordDate);
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const totalPar = store.holes.reduce((sum, h) => sum + h.par, 0);
+      const vsPar = store.courseRecord - totalPar;
+      const parStr = vsPar <= 0 ? `${vsPar}` : `+${vsPar}`;
+      this.courseRecordEl.textContent = `🏆 Course Record: ${store.courseRecord} (${parStr}) — ${dateStr}`;
+    } else {
+      this.courseRecordEl.textContent = '';
+    }
   }
 
   // === GOLFER CLICK INSPECT ===
@@ -2105,6 +2125,11 @@ export class BuilderScene extends Phaser.Scene {
     satisfaction -= golfer.treeHits * 0.3;
     satisfaction = Math.max(1.0, Math.min(5.0, satisfaction));
     store.addReputation(Math.round(satisfaction * 10) / 10);
+
+    // Update course record if this round is the best
+    if (store.courseRecord === null || golfer.totalStrokes < store.courseRecord) {
+      store.setCourseRecord(golfer.totalStrokes, new Date().toISOString());
+    }
 
     const sprite = this.golferSprites.get(golfer.id);
     if (sprite) {
