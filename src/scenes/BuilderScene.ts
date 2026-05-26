@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { courseStore, Tile, HoleConfig, PlacedBuilding } from '../state/course';
+import { courseStore, Tile, HoleConfig, PlacedBuilding, getClubhousePosition } from '../state/course';
 import { golferStore, Golfer, generateThought } from '../state/golfers';
 import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
 import { GAME_CONFIG } from '../utils/gameConfig';
@@ -150,8 +150,22 @@ export class BuilderScene extends Phaser.Scene {
     const hole1 = store.holes.find((h) => h.id === 1);
     if (!hole1?.tee) return;
     // Spawn one pair (2 golfers) + one solo = 3 initial golfers
-    this.spawnGolferPair();
+    // Each has walkTarget set to hole1 tee so they walk from clubhouse
+    const pair = this.spawnGolferPair();
+    if (pair) {
+      this.walkGolferToTee(pair[0].id, hole1.tee.col, hole1.tee.row);
+      this.walkGolferToTee(pair[1].id, hole1.tee.col, hole1.tee.row);
+    }
     this.spawnGolfer();
+  }
+
+  /** Set a golfer's walk target to the tee so they walk before their first swing */
+  private walkGolferToTee(golferId: number, teeCol: number, teeRow: number): void {
+    golferStore.getState().updateGolfer(golferId, {
+      state: 'walking',
+      stateTimer: GAME_CONFIG.WALK_STEP_TIME,
+      walkTarget: { col: teeCol, row: teeRow },
+    });
   }
 
   private spawnGolferPair(): [Golfer, Golfer] | null {
@@ -162,9 +176,10 @@ export class BuilderScene extends Phaser.Scene {
     const gStore = golferStore.getState();
     if (gStore.golfers.length + 2 > this.MAX_GOLFERS) return null;
 
-    // Spawn two golfers with slight offset
-    const golferA = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
-    const golferB = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    // Spawn at clubhouse, walk to tee
+    const clubhousePos = getClubhousePosition();
+    const golferA = gStore.spawnGolfer(clubhousePos.col, clubhousePos.row);
+    const golferB = gStore.spawnGolfer(clubhousePos.col, clubhousePos.row);
     if (!golferA || !golferB) return null;
 
     // Offset B slightly so they don't perfectly overlap
@@ -196,7 +211,9 @@ export class BuilderScene extends Phaser.Scene {
     const gStore = golferStore.getState();
     if (gStore.golfers.length >= this.MAX_GOLFERS) return null;
 
-    const golfer = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    // Spawn at clubhouse
+    const clubhousePos = getClubhousePosition();
+    const golfer = gStore.spawnGolfer(clubhousePos.col, clubhousePos.row);
     if (!golfer) return null;
 
     const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
@@ -1960,43 +1977,18 @@ export class BuilderScene extends Phaser.Scene {
     const nextHole = store.holes.find((h) => h.id === nextHoleId);
 
     if (!nextHole?.tee || nextHoleId > 9) {
+      // Walk back to clubhouse after round complete instead of instant removal
+      const clubhousePos = getClubhousePosition();
       golferStore.getState().updateGolfer(golfer.id, {
         scorecard,
         totalStrokes: newTotal,
-        state: 'round_complete',
-        stateTimer: 0,
-        onCourse: false,
+        state: 'walking',
+        stateTimer: GAME_CONFIG.WALK_STEP_TIME,
+        walkTarget: { col: clubhousePos.col, row: clubhousePos.row },
       });
 
-      // Round completion bonus also scaled by reputation
-      const baseRoundRevenue = 20 + Math.round(golfer.skill * 30);
-      const roundRevenue = Math.round(baseRoundRevenue * repMult);
-      store.addMoney(roundRevenue);
-
-      // Compute satisfaction and update reputation
-      const totalPar = store.holes.reduce((sum, h) => sum + h.par, 0);
-      const scoreVsPar = newTotal - totalPar;
-      let satisfaction = 3.0; // neutral baseline
-      if (scoreVsPar <= -3) satisfaction = 5.0;
-      else if (scoreVsPar <= 0) satisfaction = 4.0;
-      else if (scoreVsPar <= 2) satisfaction = 3.0;
-      else if (scoreVsPar <= 5) satisfaction = 2.0;
-      else satisfaction = 1.0;
-
-      // Penalties for hazards
-      satisfaction -= golfer.waterHits * 0.5;
-      satisfaction -= golfer.treeHits * 0.3;
-      satisfaction = Math.max(1.0, Math.min(5.0, satisfaction));
-
-      store.addReputation(Math.round(satisfaction * 10) / 10);
-
-      const sprite = this.golferSprites.get(golfer.id);
-      if (sprite) {
-        sprite.destroy();
-        this.golferSprites.delete(golfer.id);
-      }
-      this.removeBallSprite(golfer.id);
-      golferStore.getState().removeGolfer(golfer.id);
+      // Keep the money/popup/etc — it already happened above
+      // The actual round_complete logic fires when golfer arrives at clubhouse
       return;
     }
 
@@ -2034,6 +2026,15 @@ export class BuilderScene extends Phaser.Scene {
 
     if (dc === 0 && dr === 0) {
       // Arrived!
+
+      // Check if we walked to the clubhouse (round complete) — remove golfer
+      const clubhousePos = getClubhousePosition();
+      if (target.col === clubhousePos.col && target.row === clubhousePos.row) {
+        // Round complete — award bonus, remove golfer
+        this.completeGolferRound(golfer);
+        return;
+      }
+
       const wasHoleWalk = golfer.strokes === 0; // just started a new hole
       golferStore.getState().updateGolfer(golfer.id, {
         state: 'addressing',
@@ -2075,6 +2076,40 @@ export class BuilderScene extends Phaser.Scene {
       sprite.destroy();
       this.landingBallSprites.delete(golferId);
     }
+  }
+
+  /** Award round completion bonus, compute satisfaction, and remove golfer */
+  private completeGolferRound(golfer: Golfer): void {
+    const store = courseStore.getState();
+    const repMult = store.getReputationMultiplier();
+
+    // Round completion bonus scaled by reputation
+    const baseRoundRevenue = 20 + Math.round(golfer.skill * 30);
+    const roundRevenue = Math.round(baseRoundRevenue * repMult);
+    store.addMoney(roundRevenue);
+
+    // Compute satisfaction and update reputation
+    const totalPar = store.holes.reduce((sum, h) => sum + h.par, 0);
+    const scoreVsPar = golfer.totalStrokes - totalPar;
+    let satisfaction = 3.0;
+    if (scoreVsPar <= -3) satisfaction = 5.0;
+    else if (scoreVsPar <= 0) satisfaction = 4.0;
+    else if (scoreVsPar <= 2) satisfaction = 3.0;
+    else if (scoreVsPar <= 5) satisfaction = 2.0;
+    else satisfaction = 1.0;
+
+    satisfaction -= golfer.waterHits * 0.5;
+    satisfaction -= golfer.treeHits * 0.3;
+    satisfaction = Math.max(1.0, Math.min(5.0, satisfaction));
+    store.addReputation(Math.round(satisfaction * 10) / 10);
+
+    const sprite = this.golferSprites.get(golfer.id);
+    if (sprite) {
+      sprite.destroy();
+      this.golferSprites.delete(golfer.id);
+    }
+    this.removeBallSprite(golfer.id);
+    golferStore.getState().removeGolfer(golfer.id);
   }
 
   shutdown(): void {

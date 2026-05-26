@@ -61,6 +61,7 @@ export interface CourseSaveData {
   debt: number;
   reputation: number;
   reputationHistory: number[];
+  buildings?: PlacedBuilding[];
   savedAt: string;
 }
 
@@ -92,6 +93,21 @@ function createDefaultHoles(): HoleConfig[] {
   }));
 }
 
+/** Place the clubhouse near hole 1's tee, or at a default position if no tee exists */
+function defaultBuildings(): PlacedBuilding[] {
+  // We'll place near the tee of hole 1 or fall back to (0, GRID_ROWS-1)
+  return [{ typeKey: 'clubhouse', col: 3, row: GRID_ROWS - 4 }];
+}
+
+/** Find the clubhouse position, or a reasonable default */
+export function getClubhousePosition(): { col: number; row: number } {
+  const state = courseStore.getState();
+  const ch = state.buildings.find((b) => b.typeKey === 'clubhouse');
+  if (ch) return { col: ch.col, row: ch.row };
+  // Fallback
+  return { col: 3, row: GRID_ROWS - 4 };
+}
+
 export const courseStore = createStore<CourseState>()((set, get) => ({
   grid: createEmptyGrid(),
   holes: createDefaultHoles(),
@@ -99,7 +115,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   debt: 0,
   reputation: 2.5,
   reputationHistory: [],
-  buildings: [{ typeKey: 'clubhouse', col: 1, row: 1 }],
+  buildings: defaultBuildings(),
 
   setTile: (col, row, type) =>
     set((state) => {
@@ -208,7 +224,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         debt: data.debt ?? 0,
         reputation: data.reputation ?? 2.5,
         reputationHistory: data.reputationHistory ?? [],
-        buildings: data.buildings ?? [{ typeKey: 'clubhouse', col: 1, row: 1 }],
+        buildings: data.buildings ?? defaultBuildings(),
       });
       return true;
     } catch (e) {
@@ -238,7 +254,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       debt: 0,
       reputation: 2.5,
       reputationHistory: [],
-      buildings: [{ typeKey: 'clubhouse', col: 1, row: 1 }],
+      buildings: defaultBuildings(),
     });
   },
 
@@ -271,7 +287,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         debt: data.debt ?? 0,
         reputation: data.reputation ?? 2.5,
         reputationHistory: data.reputationHistory ?? [],
-        buildings: data.buildings ?? [{ typeKey: 'clubhouse', col: 1, row: 1 }],
+        buildings: data.buildings ?? defaultBuildings(),
       });
       return true;
     } catch (e) {
