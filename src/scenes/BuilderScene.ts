@@ -42,7 +42,7 @@ export class BuilderScene extends Phaser.Scene {
 
   // Golfers (unified build+play)
   private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
-  private activeBall: Ball | null = null;
+  private activeBalls: Map<number, Ball> = new Map();
   private spawnTimer = 0;
   private readonly SPAWN_INTERVAL = 4000; // ms between spawns
   private readonly MAX_GOLFERS = 8;
@@ -1186,11 +1186,11 @@ export class BuilderScene extends Phaser.Scene {
 
     const scaledDelta = delta * this.timeScale;
 
-    // Update ball flight
-    if (this.activeBall) {
-      this.activeBall.update(scaledDelta);
-      if (this.activeBall.complete) {
-        this.activeBall = null;
+    // Update ball flights (per-golfer, supports simultaneous swings)
+    for (const [golferId, ball] of this.activeBalls) {
+      ball.update(scaledDelta);
+      if (ball.complete) {
+        this.activeBalls.delete(golferId);
       }
     }
 
@@ -1429,7 +1429,7 @@ export class BuilderScene extends Phaser.Scene {
       previousTilePos: previousPos,
     });
 
-    this.activeBall = new Ball(
+    this.activeBalls.set(golfer.id, new Ball(
       this,
       currentPos.col,
       currentPos.row,
@@ -1439,7 +1439,7 @@ export class BuilderScene extends Phaser.Scene {
       this.OFFSET_Y,
       500,
       () => this.onBallLanded(golfer.id, landingCol, landingRow, previousPos)
-    );
+    ));
   }
 
   private pickClubDistance(distanceToCup: number): number {
