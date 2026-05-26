@@ -129,7 +129,7 @@ export class MusicScene extends Phaser.Scene {
     const el = document.createElement('div');
     el.id = 'music-player';
     el.style.cssText = `
-      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 101;
+      position: fixed; bottom: 10px; right: 10px; z-index: 101;
       background: rgba(0,0,0,0.8); border-radius: 8px; padding: 6px 10px;
       display: flex; align-items: center; gap: 6px; font-family: sans-serif;
     `;
