@@ -1825,10 +1825,13 @@ export class BuilderScene extends Phaser.Scene {
     // Show floating emoji + greens fee popup over this golfer
     this.showHoleResultPopup(golfer, par, greensFee);
 
-    // Trigger a spawn when any golfer finishes hole 1 — keeps fresh golfers coming
-    // even if there's only 1 hole on the course
-    if (golfer.currentHole === 1) {
-      const gStore = golferStore.getState();
+    // Trigger a spawn only when ALL active golfers have finished hole 1
+    // This ensures the initial group clears the first tee before new golfers arrive
+    const gStore = golferStore.getState();
+    const activeOnHole1 = gStore.golfers.filter(
+      (g) => g.onCourse && g.state !== 'round_complete' && g.currentHole === 1
+    ).length;
+    if (activeOnHole1 === 0) {
       const activeCount = gStore.golfers.filter((g) => g.onCourse && g.state !== 'round_complete').length;
       if (activeCount < this.MAX_GOLFERS) {
         this.spawnGolferPair();
