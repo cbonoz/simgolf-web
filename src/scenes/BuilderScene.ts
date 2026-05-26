@@ -1148,7 +1148,8 @@ export class BuilderScene extends Phaser.Scene {
     }
 
     const cashColor = store.money > 0 ? '#4caf50' : '#ef5350';
-    header.innerHTML = `<span style="color:${cashColor};">💰 $${store.money.toLocaleString()}</span>`;
+    const stars = '⭐'.repeat(Math.round(store.reputation));
+    header.innerHTML = `<span style="color:${cashColor};">💰 $${store.money.toLocaleString()}</span> <span style="font-size:13px;color:#ffd700;">${stars}</span>`;
 
     const debtInfo = this.moneyDisplay.querySelector('.debt-info') as HTMLElement;
     if (debtInfo) {
@@ -1162,6 +1163,8 @@ export class BuilderScene extends Phaser.Scene {
       }
       const netColor = net >= 0 ? '#81c784' : '#ef5350';
       lines.push(`Net: <span style="color:${netColor};">$${net.toLocaleString()}</span>`);
+      const repMult = Math.round(store.getReputationMultiplier() * 100);
+      lines.push(`Reputation: <span style="color:#ffd700;">${store.reputation.toFixed(1)} ★</span> (${repMult}% fees)`);
       debtInfo.innerHTML = lines.join('<br>');
     }
   }
@@ -1471,8 +1474,18 @@ export class BuilderScene extends Phaser.Scene {
       newStrokes += 1;
       newTilePos = previousPos;
       stateTimer = 800;
+      // Track water hit for reputation
+      const g = gStore.golfers.find((gg) => gg.id === golferId);
+      if (g) {
+        gStore.updateGolfer(golferId, { waterHits: g.waterHits + 1 });
+      }
     } else if (tile.type === 'trees') {
       stateTimer = 600;
+      // Track tree hit for reputation
+      const g = gStore.golfers.find((gg) => gg.id === golferId);
+      if (g) {
+        gStore.updateGolfer(golferId, { treeHits: g.treeHits + 1 });
+      }
     } else if (tile.type === 'green' && cupPos) {
       const distToCup = Math.abs(landingCol - cupPos.col) + Math.abs(landingRow - cupPos.row);
       const puttRange = Math.max(1, Math.round(golfer.skill * 3));
@@ -1521,10 +1534,12 @@ export class BuilderScene extends Phaser.Scene {
   private transitionToNextHole(golfer: Golfer): void {
     const store = courseStore.getState();
 
-    // Greens fee per hole (base $5 + par bonus)
+    // Greens fee per hole (base $5 + par bonus), scaled by reputation
     const hole = store.holes.find((h) => h.id === golfer.currentHole);
     const par = hole?.par ?? 3;
-    const greensFee = 5 + par; // $8 for par-3, $9 for par-4, $10 for par-5
+    const baseGreensFee = 5 + par; // $8 for par-3, $9 for par-4, $10 for par-5
+    const repMult = store.getReputationMultiplier();
+    const greensFee = Math.round(baseGreensFee * repMult);
     store.addMoney(greensFee);
 
     const scorecard = [...golfer.scorecard, golfer.strokes];
@@ -1542,8 +1557,27 @@ export class BuilderScene extends Phaser.Scene {
         onCourse: false,
       });
 
-      const roundRevenue = 20 + Math.round(golfer.skill * 30);
+      // Round completion bonus also scaled by reputation
+      const baseRoundRevenue = 20 + Math.round(golfer.skill * 30);
+      const roundRevenue = Math.round(baseRoundRevenue * repMult);
       store.addMoney(roundRevenue);
+
+      // Compute satisfaction and update reputation
+      const totalPar = store.holes.reduce((sum, h) => sum + h.par, 0);
+      const scoreVsPar = newTotal - totalPar;
+      let satisfaction = 3.0; // neutral baseline
+      if (scoreVsPar <= -3) satisfaction = 5.0;
+      else if (scoreVsPar <= 0) satisfaction = 4.0;
+      else if (scoreVsPar <= 2) satisfaction = 3.0;
+      else if (scoreVsPar <= 5) satisfaction = 2.0;
+      else satisfaction = 1.0;
+
+      // Penalties for hazards
+      satisfaction -= golfer.waterHits * 0.5;
+      satisfaction -= golfer.treeHits * 0.3;
+      satisfaction = Math.max(1.0, Math.min(5.0, satisfaction));
+
+      store.addReputation(Math.round(satisfaction * 10) / 10);
 
       const sprite = this.golferSprites.get(golfer.id);
       if (sprite) {

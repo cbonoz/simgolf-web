@@ -21,6 +21,8 @@ export interface CourseState {
   holes: HoleConfig[];
   money: number;
   debt: number;
+  reputation: number; // 1.0 - 5.0
+  reputationHistory: number[]; // last 10 golfer satisfaction scores
   setTile: (col: number, row: number, type: TerrainType) => void;
   setVegetation: (col: number, row: number, vegetation: string | null) => void;
   setTee: (holeId: number, col: number, row: number) => void;
@@ -38,6 +40,8 @@ export interface CourseState {
   hasLocalSave: () => boolean;
   takeLoan: (amount: number) => void;
   repayLoan: (amount: number) => boolean;
+  addReputation: (satisfaction: number) => void;
+  getReputationMultiplier: () => number;
 }
 
 export interface CourseSaveData {
@@ -46,10 +50,12 @@ export interface CourseSaveData {
   holes: HoleConfig[];
   money: number;
   debt: number;
+  reputation: number;
+  reputationHistory: number[];
   savedAt: string;
 }
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 function createEmptyGrid(): Tile[][] {
   const grid: Tile[][] = [];
@@ -82,6 +88,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   holes: createDefaultHoles(),
   money: 5000,
   debt: 0,
+  reputation: 2.5,
+  reputationHistory: [],
 
   setTile: (col, row, type) =>
     set((state) => {
@@ -168,6 +176,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         holes: state.holes,
         money: state.money,
         debt: state.debt,
+        reputation: state.reputation,
+        reputationHistory: state.reputationHistory,
         savedAt: new Date().toISOString(),
       }));
     } catch (e) {
@@ -185,6 +195,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         holes: data.holes,
         money: data.money,
         debt: data.debt ?? 0,
+        reputation: data.reputation ?? 2.5,
+        reputationHistory: data.reputationHistory ?? [],
       });
       return true;
     } catch (e) {
@@ -212,17 +224,21 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       holes: createDefaultHoles(),
       money: 5000,
       debt: 0,
+      reputation: 2.5,
+      reputationHistory: [],
     });
   },
 
   serialize: () => {
-    const { grid, holes, money, debt } = get();
+    const { grid, holes, money, debt, reputation, reputationHistory } = get();
     const data: CourseSaveData = {
       version: SAVE_VERSION,
       grid,
       holes,
       money,
       debt,
+      reputation,
+      reputationHistory,
       savedAt: new Date().toISOString(),
     };
     return JSON.stringify(data);
@@ -239,6 +255,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         holes: data.holes,
         money: data.money,
         debt: data.debt ?? 0,
+        reputation: data.reputation ?? 2.5,
+        reputationHistory: data.reputationHistory ?? [],
       });
       return true;
     } catch (e) {
@@ -263,5 +281,21 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
     if (actual <= 0) return false;
     set({ money: state.money - actual, debt: state.debt - actual });
     return true;
+  },
+
+  addReputation: (satisfaction: number) => {
+    set((state) => {
+      const history = [...state.reputationHistory, satisfaction];
+      if (history.length > 10) history.shift();
+      const avg = history.reduce((a, b) => a + b, 0) / history.length;
+      const clamped = Math.max(1.0, Math.min(5.0, avg));
+      return { reputationHistory: history, reputation: Math.round(clamped * 10) / 10 };
+    });
+  },
+
+  getReputationMultiplier: () => {
+    const rep = get().reputation;
+    // 1.0 = 0.6x, 2.5 = 1.0x, 5.0 = 1.6x
+    return 0.6 + (rep - 1.0) * 0.25;
   },
 }));

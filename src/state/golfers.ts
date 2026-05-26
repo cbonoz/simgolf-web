@@ -89,6 +89,8 @@ export interface Golfer {
   stateTimer: number; // ms remaining in current state
   scorecard: number[]; // strokes per hole
   onCourse: boolean;
+  waterHits: number;
+  treeHits: number;
 }
 
 export interface GolferStoreState {
@@ -125,6 +127,8 @@ export const golferStore = createStore<GolferStoreState>()((set, get) => ({
       stateTimer: 800, // brief pause before first swing
       scorecard: [],
       onCourse: true,
+      waterHits: 0,
+      treeHits: 0,
     };
 
     set({

@@ -24,6 +24,8 @@ ID,Milestone,Task,Status,Notes
 23,M6 - Unified Build+Play,Merge BuilderScene + PlayScene into unified GameScene,completed,Golfers always visible and active while building. No more scene transitions. Removed PlayScene.ts.
 24,M6 - Unified Build+Play,Time controls (pause / 1x / 2x / 5x),completed,Added time control buttons in builder UI. Golfers only update when unpaused. Scaled delta by timeScale.
 25,M6 - Unified Build+Play,Click-to-inspect golfers + thought bubbles,completed,Clicking a golfer shows a tooltip with name, skill, stats, and a thought/reaction based on current state and terrain. Auto-hides after 3s.
+26,M4 - Economy & Day Cycle,Reputation system core — rolling average + golfer satisfaction tracking,completed,Add reputation field to courseStore. Track per-golfer: water hits tree hits strokes vs par. Compute satisfaction on round complete. Update rolling reputation (last 10 rounds). Scale green fees by reputation.
+27,M4 - Economy & Day Cycle,Reputation UI — star rating display in money bar,pending,Render 1-5 star rating next to money display. Update in real-time as reputation changes.
 26,M7 - Bug Fixes,Fix simultaneous ball flight overwrite,completed,Changed activeBall: Ball|null to activeBalls: Map<number,Ball>. Multiple golfers can swing simultaneously without overwriting each other's ball flights.
 27,M7 - Bug Fixes,Fix golfer count showing completed golfers,completed,updateGolferCount() now filters out round_complete golfers so count reflects only active players.
 28,M7 - Bug Fixes,Fix sprite/Map leaks in shutdown,completed,shutdown() now clears teeSprites, flagSprites, vegetationOverlaySprites, golferSprites, and activeBalls Maps after destroying sprites.
