@@ -601,7 +601,13 @@ export class BuilderScene extends Phaser.Scene {
     if (!hole) return;
 
     if (!hole.tee) {
-      // Place tee — auto-place fairway underneath
+      // Place tee — costs fairway terrain price
+      const cost = TERRAIN_COST.fairway;
+      if (!store.spendMoney(cost)) {
+        this.showTemporaryMessage(`Not enough money! Need $${cost}, have $${store.money}`);
+        return;
+      }
+      // Auto-place fairway underneath
       const tileType = store.grid[row][col].type;
       if (tileType !== 'fairway' && tileType !== 'green') {
         store.setTile(col, row, 'fairway');
@@ -611,9 +617,14 @@ export class BuilderScene extends Phaser.Scene {
       this.refreshHoleOverlays();
       this.updateHoleUI();
     } else if (!hole.cup) {
-      // Place cup
+      // Place cup — costs green terrain price
       if (hole.tee.col === col && hole.tee.row === row) {
         this.showTemporaryMessage('Cup cannot be on the same tile as tee!');
+        return;
+      }
+      const cost = TERRAIN_COST.green;
+      if (!store.spendMoney(cost)) {
+        this.showTemporaryMessage(`Not enough money! Need $${cost}, have $${store.money}`);
         return;
       }
       // Auto-place green underneath
@@ -629,7 +640,12 @@ export class BuilderScene extends Phaser.Scene {
       this.refreshHoleOverlays();
       this.updateHoleUI();
     } else {
-      // Both placed - restart by clearing and placing new tee
+      // Both placed - restart costs fairway again
+      const cost = TERRAIN_COST.fairway;
+      if (!store.spendMoney(cost)) {
+        this.showTemporaryMessage(`Not enough money! Need $${cost}, have $${store.money}`);
+        return;
+      }
       store.clearHole(this.selectedHoleId);
       // Auto-place fairway underneath new tee
       const tileType = store.grid[row][col].type;
