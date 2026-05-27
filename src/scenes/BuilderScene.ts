@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { courseStore, Tile, HoleConfig, PlacedBuilding, getClubhousePosition } from '../state/course';
+import { courseStore, Tile, HoleConfig, PlacedBuilding, getClubhousePosition, getDayPhase } from '../state/course';
 import { golferStore, Golfer, generateThought } from '../state/golfers';
 import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
 import { GAME_CONFIG } from '../utils/gameConfig';
@@ -84,9 +84,9 @@ export class BuilderScene extends Phaser.Scene {
   private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
   private activeBalls: Map<number, Ball> = new Map();
   private spawnTimer = 0;
-  private readonly SPAWN_INTERVAL = GAME_CONFIG.SPAWN_INTERVAL;
-  private readonly MAX_GOLFERS = GAME_CONFIG.MAX_GOLFERS;
-  private readonly MIN_GOLFERS = GAME_CONFIG.MIN_GOLFERS;
+  private SPAWN_INTERVAL: number = GAME_CONFIG.SPAWN_INTERVAL;
+  private MAX_GOLFERS: number = GAME_CONFIG.MAX_GOLFERS;
+  private MIN_GOLFERS: number = GAME_CONFIG.MIN_GOLFERS;
   private timeScale = 1;
   private scorecardEl!: HTMLDivElement;
   private courseRecordEl!: HTMLDivElement;
@@ -288,6 +288,33 @@ export class BuilderScene extends Phaser.Scene {
 
   private getGolferDepth(col: number, row: number): number {
     return (col + row) * GRID_COLS + col + 0.5;
+  }
+
+  /** Update spawn parameters based on current day phase */
+  private updateSpawnParams(gameTimeMinutes: number): void {
+    const phase = getDayPhase(gameTimeMinutes);
+    switch (phase) {
+      case 'morning':
+        this.SPAWN_INTERVAL = 15000;  // slow build
+        this.MAX_GOLFERS = 6;
+        this.MIN_GOLFERS = 1;
+        break;
+      case 'peak':
+        this.SPAWN_INTERVAL = 6000;   // fast — keep course lively
+        this.MAX_GOLFERS = 10;
+        this.MIN_GOLFERS = 2;
+        break;
+      case 'evening':
+        this.SPAWN_INTERVAL = 12000;  // tapering
+        this.MAX_GOLFERS = 8;
+        this.MIN_GOLFERS = 1;
+        break;
+      case 'night':
+        this.SPAWN_INTERVAL = 999999; // effectively disabled (night check handles this too)
+        this.MAX_GOLFERS = 0;
+        this.MIN_GOLFERS = 0;
+        break;
+    }
   }
 
   private tileToWorld(col: number, row: number): { x: number; y: number } {
@@ -2667,6 +2694,9 @@ export class BuilderScene extends Phaser.Scene {
     // Update clock display
     const { gameTimeMinutes, dayCount } = courseStore.getState();
     this.clockEl.textContent = `${this.formatGameTimeDisplay(gameTimeMinutes)} - Day ${dayCount}`;
+
+    // Update spawn parameters based on current day phase
+    this.updateSpawnParams(gameTimeMinutes);
 
     // Night phase detection: if night and not already in transition, begin night mode
     if (!this.challengeActive) {
