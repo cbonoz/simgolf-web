@@ -58,6 +58,16 @@ export interface CourseState {
   completedScores: number[]; // total strokes from all completed rounds
   gameTimeMinutes: number; // minutes since 6:00 AM (starts at 360)
   dayCount: number; // current day number
+  // --- Day tracking ---
+  dailyRevenue: number; // greens fees + building revenue + round bonuses today
+  dailyExpenses: number; // building purchases + terrain costs today
+  dailyGolfersCompleted: number; // golfers who finished full rounds today
+  addRevenue: (amount: number) => void;
+  addExpense: (amount: number) => void;
+  addDailyGolferCompleted: () => void;
+  resetDayCounters: () => void;
+  // --- End day tracking ---
+
   setGameTime: (minutes: number) => void;
   advanceGameTime: (deltaMinutes: number) => void;
   nextDay: () => void; // reset time to 6:00 AM, increment day
@@ -165,6 +175,9 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   completedScores: [],
   gameTimeMinutes: 360, // 6:00 AM
   dayCount: 1,
+  dailyRevenue: 0,
+  dailyExpenses: 0,
+  dailyGolfersCompleted: 0,
 
   setTile: (col, row, type) =>
     set((state) => {
@@ -337,6 +350,9 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       completedScores: [],
       gameTimeMinutes: 360,
       dayCount: 1,
+      dailyRevenue: 0,
+      dailyExpenses: 0,
+      dailyGolfersCompleted: 0,
     });
   },
 
@@ -445,6 +461,30 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
     set((state) => ({
       completedScores: [...state.completedScores, strokes],
     })),
+
+  addRevenue: (amount) =>
+    set((state) => ({
+      money: state.money + amount,
+      dailyRevenue: state.dailyRevenue + amount,
+    })),
+
+  addExpense: (amount) =>
+    set((state) => ({
+      money: state.money - amount,
+      dailyExpenses: state.dailyExpenses + amount,
+    })),
+
+  addDailyGolferCompleted: () =>
+    set((state) => ({
+      dailyGolfersCompleted: state.dailyGolfersCompleted + 1,
+    })),
+
+  resetDayCounters: () =>
+    set({
+      dailyRevenue: 0,
+      dailyExpenses: 0,
+      dailyGolfersCompleted: 0,
+    }),
 
   setGameTime: (minutes) =>
     set({ gameTimeMinutes: minutes }),
