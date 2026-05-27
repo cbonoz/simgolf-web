@@ -30,8 +30,12 @@ export class BuilderScene extends Phaser.Scene {
   // Height mode: raise (+1) or lower (-1)
   private heightMode: 'raise' | 'lower' | null = null;
 
+  // Revenue tick
+  private revenueTickTimer = 0;
+  private readonly REVENUE_TICK_INTERVAL = 30000; // ms at 1x scale (30 game seconds)
+
   // Hole mode
-  private builderMode: 'paint' | 'hole' | 'height' | 'none' = 'paint';
+  private builderMode: 'paint' | 'hole' | 'height' | 'buildings' | 'none' = 'paint';
   private selectedHoleId: number = 1;
   private teeSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private flagSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
@@ -45,6 +49,8 @@ export class BuilderScene extends Phaser.Scene {
   private terrainButtonsContainer!: HTMLDivElement;
   private holeControlsContainer!: HTMLDivElement;
   private heightControlsContainer!: HTMLDivElement;
+  private buildingControlsContainer!: HTMLDivElement;
+  private selectedBuildingType: string | null = null;
   private modeButtons!: HTMLButtonElement[];
   // Golfers (unified build+play)
   private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
@@ -259,6 +265,23 @@ export class BuilderScene extends Phaser.Scene {
     return clampTile(result.col, result.row, GRID_COLS, GRID_ROWS);
   }
 
+  /** Collect revenue from all revenue-category buildings */
+  private processRevenueTick(): void {
+    const store = courseStore.getState();
+    const repMult = store.getReputationMultiplier();
+    let totalRevenue = 0;
+    for (const bld of store.buildings) {
+      const bt = BUILDING_TYPES.find((b) => b.key === bld.typeKey);
+      if (!bt || bt.category !== 'revenue') continue;
+      const rate = bt.key === 'clubhouse' ? 50 : bt.key === 'shop' ? 25 : bt.key === 'snack_bar' ? 15 : 0;
+      totalRevenue += Math.round(rate * repMult);
+    }
+    if (totalRevenue > 0) {
+      store.addMoney(totalRevenue);
+      this.showTemporaryMessage(`🏪 Revenue: +$${totalRevenue}`);
+    }
+  }
+
   private updateHelpText(): void {
     if (this.builderMode === 'paint') {
       this.helpText.textContent = 'Left-click: Paint | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
@@ -266,6 +289,8 @@ export class BuilderScene extends Phaser.Scene {
       this.helpText.textContent = 'Left-click: Place tee/cup | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     } else if (this.builderMode === 'height') {
       this.helpText.textContent = 'Left-click: Raise/Lower tile | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo | Esc: Resume';
+    } else if (this.builderMode === 'buildings') {
+      this.helpText.textContent = 'Left-click: Place building | Click golfer/building: Inspect | Scroll: Zoom | Right-drag: Pan';
     } else {
       this.helpText.textContent = 'Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo | Esc: Resume';
     }
@@ -669,6 +694,8 @@ export class BuilderScene extends Phaser.Scene {
       this.paintTile(col, row);
     } else if (this.builderMode === 'height') {
       this.paintHeightTile(col, row);
+    } else if (this.builderMode === 'buildings') {
+      this.placeBuildingAt(col, row);
     } else {
       this.placeHoleElement(col, row);
     }
@@ -683,6 +710,47 @@ export class BuilderScene extends Phaser.Scene {
     if (next < -10 || next > 10) return;
     store.adjustHeight(col, row, delta);
     this.refreshGrid();
+  }
+
+  private placeBuildingAt(col: number, row: number): void {
+    if (!this.selectedBuildingType) return;
+    const bt = BUILDING_TYPES.find((b) => b.key === this.selectedBuildingType);
+    if (!bt || bt.key === 'clubhouse') return;
+
+    const store = courseStore.getState();
+    const tile = store.grid[row][col];
+    // Only place on rough or fairway
+    if (tile.type !== 'rough' && tile.type !== 'fairway') {
+      this.showTemporaryMessage('Buildings can only be placed on rough or fairway.');
+      return;
+    }
+    // Check overlap with existing buildings
+    for (let dc = 0; dc < (bt.width || 1); dc++) {
+      for (let dr = 0; dr < (bt.height || 1); dr++) {
+        const nc = col + dc;
+        const nr = row + dr;
+        if (store.buildings.some((b) => b.col === nc && b.row === nr)) {
+          this.showTemporaryMessage('Tile already occupied by a building.');
+          return;
+        }
+      }
+    }
+    if (!store.spendMoney(bt.cost)) {
+      this.showTemporaryMessage(`Not enough money! Need $${bt.cost}.`);
+      return;
+    }
+    store.addBuilding(bt.key, col, row);
+    this.refreshGrid();
+    this.renderAllBuildings();
+    this.updateMoneyDisplay();
+  }
+
+  private updateBuildingSelection(): void {
+    const btns = this.buildingControlsContainer.querySelectorAll('button');
+    for (const btn of btns) {
+      const key = (btn as HTMLButtonElement).dataset.building;
+      (btn as HTMLButtonElement).style.background = key === this.selectedBuildingType ? '#4a8f3f' : '#444';
+    }
   }
 
   private paintTile(col: number, row: number): void {
@@ -947,7 +1015,10 @@ export class BuilderScene extends Phaser.Scene {
     const heightBtn = document.createElement('button');
     heightBtn.textContent = '⛰️ Hgt';
     heightBtn.title = 'Raise/lower terrain';
-    this.modeButtons = [paintBtn, holeBtn, heightBtn, noneBtn];
+    const bldBtn = document.createElement('button');
+    bldBtn.textContent = '🏪 Bld';
+    bldBtn.title = 'Place buildings';
+    this.modeButtons = [paintBtn, holeBtn, heightBtn, bldBtn, noneBtn];
 
     for (const btn of this.modeButtons) {
       btn.style.cssText = `
@@ -976,6 +1047,13 @@ export class BuilderScene extends Phaser.Scene {
     heightBtn.addEventListener('click', () => {
       this.builderMode = 'height';
       this.heightMode = 'raise';
+      this.updateModeButtons();
+      this.updateUIVisibility();
+    });
+
+    bldBtn.addEventListener('click', () => {
+      this.builderMode = 'buildings';
+      this.selectedBuildingType = BUILDING_TYPES[0].key;
       this.updateModeButtons();
       this.updateUIVisibility();
     });
@@ -1066,6 +1144,44 @@ export class BuilderScene extends Phaser.Scene {
     this.heightControlsContainer.appendChild(heightInfo);
 
     this.terrainPalette.appendChild(this.heightControlsContainer);
+
+    // Building controls container
+    this.buildingControlsContainer = document.createElement('div');
+    this.buildingControlsContainer.style.cssText = 'display: none; flex-direction: column; gap: 6px;';
+
+    const bldLabel = document.createElement('div');
+    bldLabel.textContent = 'Select Building:';
+    bldLabel.style.cssText = 'color: #aaa; font-size: 12px;';
+    this.buildingControlsContainer.appendChild(bldLabel);
+
+    for (const bt of BUILDING_TYPES) {
+      const btn = document.createElement('button');
+      const name = bt.key === 'clubhouse' ? `${bt.name} (built)` : `${bt.name} ($${bt.cost})`;
+      btn.textContent = name;
+      btn.dataset.building = bt.key;
+      btn.dataset.cost = String(bt.cost);
+      btn.style.cssText = `
+        padding: 6px 12px; border: 2px solid transparent; border-radius: 4px;
+        cursor: pointer; font-size: 12px; text-transform: capitalize;
+        background: ${bt.key === this.selectedBuildingType ? '#4a8f3f' : '#444'};
+        color: #fff; text-align: left;
+        ${bt.key === 'clubhouse' ? 'opacity: 0.5;' : ''}
+      `;
+      if (bt.key !== 'clubhouse') {
+        btn.addEventListener('click', () => {
+          this.selectedBuildingType = bt.key;
+          this.updateBuildingSelection();
+        });
+      }
+      this.buildingControlsContainer.appendChild(btn);
+    }
+
+    const bldInfo = document.createElement('div');
+    bldInfo.style.cssText = 'color: #888; font-size: 10px; line-height: 1.3;';
+    bldInfo.textContent = 'Click a building type, then click a tile to place it. Rough or fairway only.';
+    this.buildingControlsContainer.appendChild(bldInfo);
+
+    this.terrainPalette.appendChild(this.buildingControlsContainer);
 
     // Hole controls container
     this.holeControlsContainer = document.createElement('div');
@@ -1252,8 +1368,10 @@ export class BuilderScene extends Phaser.Scene {
     this.modeButtons[1].style.borderColor = this.builderMode === 'hole' ? '#6bbf5e' : 'transparent';
     this.modeButtons[2].style.background = this.builderMode === 'height' ? '#8f6f3f' : '#444';
     this.modeButtons[2].style.borderColor = this.builderMode === 'height' ? '#e0b06b' : 'transparent';
-    this.modeButtons[3].style.background = this.builderMode === 'none' ? '#8f3f3f' : '#444';
-    this.modeButtons[3].style.borderColor = this.builderMode === 'none' ? '#e06b6b' : 'transparent';
+    this.modeButtons[3].style.background = this.builderMode === 'buildings' ? '#3f6f8f' : '#444';
+    this.modeButtons[3].style.borderColor = this.builderMode === 'buildings' ? '#6bb0e0' : 'transparent';
+    this.modeButtons[4].style.background = this.builderMode === 'none' ? '#8f3f3f' : '#444';
+    this.modeButtons[4].style.borderColor = this.builderMode === 'none' ? '#e06b6b' : 'transparent';
   }
 
   private updateUIVisibility(): void {
@@ -1262,22 +1380,32 @@ export class BuilderScene extends Phaser.Scene {
       this.terrainButtonsContainer.style.display = 'flex';
       this.holeControlsContainer.style.display = 'none';
       this.heightControlsContainer.style.display = 'none';
+      this.buildingControlsContainer.style.display = 'none';
     } else if (this.builderMode === 'hole') {
       this.terrainPalette.style.display = 'flex';
       this.terrainButtonsContainer.style.display = 'none';
       this.holeControlsContainer.style.display = 'flex';
       this.heightControlsContainer.style.display = 'none';
+      this.buildingControlsContainer.style.display = 'none';
     } else if (this.builderMode === 'height') {
       this.terrainPalette.style.display = 'flex';
       this.terrainButtonsContainer.style.display = 'none';
       this.holeControlsContainer.style.display = 'none';
       this.heightControlsContainer.style.display = 'flex';
+      this.buildingControlsContainer.style.display = 'none';
+    } else if (this.builderMode === 'buildings') {
+      this.terrainPalette.style.display = 'flex';
+      this.terrainButtonsContainer.style.display = 'none';
+      this.holeControlsContainer.style.display = 'none';
+      this.heightControlsContainer.style.display = 'none';
+      this.buildingControlsContainer.style.display = 'flex';
     } else {
       // Deselected — keep palette visible but show no tool content
       this.terrainPalette.style.display = 'flex';
       this.terrainButtonsContainer.style.display = 'none';
       this.holeControlsContainer.style.display = 'none';
       this.heightControlsContainer.style.display = 'none';
+      this.buildingControlsContainer.style.display = 'none';
     }
     this.updateHelpText();
   }
@@ -1615,6 +1743,13 @@ export class BuilderScene extends Phaser.Scene {
 
     const scaledDelta = delta * this.timeScale;
 
+    // Building revenue tick
+    this.revenueTickTimer += scaledDelta;
+    if (this.revenueTickTimer >= this.REVENUE_TICK_INTERVAL) {
+      this.revenueTickTimer = 0;
+      this.processRevenueTick();
+    }
+
     // Update ball flights (per-golfer, supports simultaneous swings)
     for (const [golferId, ball] of this.activeBalls) {
       ball.update(scaledDelta);
@@ -1887,7 +2022,7 @@ export class BuilderScene extends Phaser.Scene {
     tooltip.style.cssText = `
       position: fixed; z-index: 200; background: rgba(0,0,0,0.9); border-radius: 8px;
       padding: 10px 14px; color: #fff; font-family: sans-serif; font-size: 12px;
-      max-width: 220px; pointer-events: none; line-height: 1.5;
+      max-width: 220px; pointer-events: auto; line-height: 1.5;
       border: 1px solid #555;
       left: ${matrix.tx + 20}px; top: ${matrix.ty - 60}px;
     `;
@@ -1912,6 +2047,28 @@ export class BuilderScene extends Phaser.Scene {
       ${building.typeKey === 'clubhouse' ? '<br><span style="color:#ff9800;">🏛️ Starting building — cannot be removed</span>' : ''}
     `;
     tooltip.appendChild(details);
+
+    // Delete button (not for clubhouse)
+    if (building.typeKey !== 'clubhouse') {
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '🗑️ Delete (50% refund)';
+      delBtn.style.cssText = `
+        margin-top: 8px; padding: 4px 10px; border: 2px solid #c62828; border-radius: 4px;
+        cursor: pointer; font-size: 11px; background: #4a1a1a; color: #ef9a9a; font-weight: bold; width: 100%;
+      `;
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const store = courseStore.getState();
+        const refund = Math.round(bt.cost * 0.5);
+        store.addMoney(refund);
+        store.removeBuilding(building.col, building.row);
+        this.renderAllBuildings();
+        this.updateMoneyDisplay();
+        this.hideBuildingTooltip();
+        this.showTemporaryMessage(`Building removed. Refunded $${refund}.`);
+      });
+      tooltip.appendChild(delBtn);
+    }
 
     document.body.appendChild(tooltip);
     this.buildingTooltip = tooltip;
