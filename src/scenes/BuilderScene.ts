@@ -625,7 +625,13 @@ export class BuilderScene extends Phaser.Scene {
       if (this.playerBall.complete) {
         // Don't remove sprite here — it's the visual landing marker
         // Save reference so the next swing can clean it up
-        this.lastPlayerBallSprite = this.playerBall.sprite;
+        // BUT: if the playerMarker is visible, the ball sprite is redundant
+        // Only save it if we don't have a persistent marker
+        if (!this.playerMarker) {
+          this.lastPlayerBallSprite = this.playerBall.sprite;
+        } else {
+          this.playerBall.removeSprite();
+        }
         this.playerBall = null;
         // onComplete callback in executeChallengeSwing has already set
         // playerStrokes and playerState. Just update UI.
