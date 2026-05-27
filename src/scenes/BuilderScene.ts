@@ -337,47 +337,88 @@ export class BuilderScene extends Phaser.Scene {
 
   /** Draw slope wall graphics between tiles of different heights */
   private addSlopeWalls(col: number, row: number, pos: { x: number; y: number }, height: number, grid: Tile[][]): void {
-    if (height === 0) return;
     const HEIGHT_SCALE = 4;
-    const wallH = height * HEIGHT_SCALE; // could be negative
-
-    // Draw the visible face from this tile's bottom edge downward
-    // This fills the gap between the raised tile and the tiles/ground below
-    const g = this.add.graphics();
-    // Draw behind this tile but in front of tiles below
-    g.setDepth((col + row) * GRID_COLS + col - 0.5);
-
-    // Dark dirt brown — darker for taller heights
-    const shade = Math.min(30 + height * 12, 90);
-    const wallColor = Phaser.Display.Color.GetColor(shade + 40, shade + 10, shade - 20);
-    g.fillStyle(wallColor, 1);
-
     const cx = pos.x;
     const cy = pos.y;
     const hw = TILE_WIDTH / 2;
     const hh = TILE_HEIGHT / 2;
 
-    // Draw the full extruded diamond: the 4 bottom-edge-to-ground faces
-    // Each face is a parallelogram: the diamond edge downward by wallH
-    const edges: [number, number, number, number][] = [
-      // left → top, top → right, right → bottom, bottom → left
-      [cx - hw, cy, cx, cy - hh],
-      [cx, cy - hh, cx + hw, cy],
-      [cx + hw, cy, cx, cy + hh],
-      [cx, cy + hh, cx - hw, cy],
-    ];
+    if (height > 0) {
+      // RAISED TILE: draw a full column downward from this tile's bottom edge
+      // This fills the gap between the raised tile surface and the ground.
+      const wallH = height * HEIGHT_SCALE;
+      const g = this.add.graphics();
+      g.setDepth((col + row) * GRID_COLS + col - 0.5);
+      const shade = Math.min(30 + height * 12, 90);
+      g.fillStyle(Phaser.Display.Color.GetColor(shade + 40, shade + 10, shade - 20), 1);
 
-    for (const [ax, ay, bx, by] of edges) {
-      g.beginPath();
-      g.moveTo(ax, ay);
-      g.lineTo(bx, by);
-      g.lineTo(bx, by + wallH);
-      g.lineTo(ax, ay + wallH);
-      g.closePath();
-      g.fillPath();
+      const edges: [number, number, number, number][] = [
+        [cx - hw, cy, cx, cy - hh],
+        [cx, cy - hh, cx + hw, cy],
+        [cx + hw, cy, cx, cy + hh],
+        [cx, cy + hh, cx - hw, cy],
+      ];
+      for (const [ax, ay, bx, by] of edges) {
+        g.beginPath();
+        g.moveTo(ax, ay); g.lineTo(bx, by);
+        g.lineTo(bx, by + wallH); g.lineTo(ax, ay + wallH);
+        g.closePath(); g.fillPath();
+      }
+      this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
     }
 
-    this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
+    // LOWER TILE ADJACENT TO HIGHER TILE: draw upward faces on edges
+    // where a neighbor is higher than this tile.
+    const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    for (const [dc, dr] of dirs) {
+      const nc = col + dc;
+      const nr = row + dr;
+      if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
+      const nh = grid[nr][nc].height;
+      if (nh <= height) continue;
+
+      const diff = nh - height;
+      const wallH = diff * HEIGHT_SCALE;
+
+      const g = this.add.graphics();
+      g.setDepth((col + row) * GRID_COLS + col + 0.1);
+
+      // Lighter dirt for the face
+      const shade = Math.min(0x44 + diff * 10, 0x66);
+      g.fillStyle(Phaser.Display.Color.GetColor(shade + 0x33, shade, shade - 0x10), 1);
+
+      // The shared edge face goes UPWARD from this lower tile
+      let ax: number, ay: number, bx: number, by: number;
+      if (dc === 0) {
+        // Row neighbor
+        if (dr < 0) {
+          // Above: edge from left to top
+          ax = cx - hw; ay = cy;
+          bx = cx; by = cy - hh;
+        } else {
+          // Below: edge from right to bottom
+          ax = cx + hw; ay = cy;
+          bx = cx; by = cy + hh;
+        }
+      } else {
+        // Col neighbor
+        if (dc < 0) {
+          // Left: edge from top to left
+          ax = cx; ay = cy - hh;
+          bx = cx - hw; by = cy;
+        } else {
+          // Right: edge from bottom to right
+          ax = cx; ay = cy + hh;
+          bx = cx + hw; by = cy;
+        }
+      }
+
+      g.beginPath();
+      g.moveTo(ax, ay); g.lineTo(bx, by);
+      g.lineTo(bx, by - wallH); g.lineTo(ax, ay - wallH);
+      g.closePath(); g.fillPath();
+      this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
+    }
   }
 
   // === BUILDING RENDERING ===
