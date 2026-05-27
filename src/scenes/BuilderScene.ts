@@ -651,23 +651,83 @@ export class BuilderScene extends Phaser.Scene {
       this.refreshHoleOverlays();
       this.updateHoleUI();
     } else {
-      // Both placed - restart costs fairway again
+      // Both placed — show confirmation before clearing
+      this.showRestartHoleModal(this.selectedHoleId, col, row);
+    }
+  }
+
+  private showRestartHoleModal(holeId: number, newCol: number, newRow: number): void {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); z-index: 500; display: flex;
+      align-items: center; justify-content: center;
+    `;
+
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      background: #2a2a2a; border: 2px solid #ef5350; border-radius: 12px;
+      padding: 24px 32px; max-width: 360px; text-align: center;
+      font-family: sans-serif; color: #fff;
+    `;
+
+    const title = document.createElement('div');
+    title.textContent = '⚠️ Restart Hole?';
+    title.style.cssText = 'font-size: 18px; font-weight: bold; color: #ff9800; margin-bottom: 12px;';
+    modal.appendChild(title);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'font-size: 14px; color: #ccc; line-height: 1.5; margin-bottom: 20px;';
+    body.innerHTML = `
+      Hole ${holeId} already has a tee and cup.<br><br>
+      Restarting will <strong>clear the current hole</strong> and place a new tee here for <strong>$${TERRAIN_COST.fairway}</strong>.
+    `;
+    modal.appendChild(body);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 12px; justify-content: center;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = `
+      padding: 10px 20px; border: 2px solid #555; border-radius: 6px;
+      cursor: pointer; font-size: 14px; background: #444; color: #ccc;
+      font-weight: bold;
+    `;
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    btnRow.appendChild(cancelBtn);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Restart Hole';
+    confirmBtn.style.cssText = `
+      padding: 10px 20px; border: 2px solid #ef5350; border-radius: 6px;
+      cursor: pointer; font-size: 14px; background: #c62828; color: #fff;
+      font-weight: bold;
+    `;
+    confirmBtn.addEventListener('click', () => {
+      const store = courseStore.getState();
       const cost = TERRAIN_COST.fairway;
       if (!store.spendMoney(cost)) {
         this.showTemporaryMessage(`Not enough money! Need $${cost}, have $${store.money}`);
+        overlay.remove();
         return;
       }
-      store.clearHole(this.selectedHoleId);
-      // Auto-place fairway underneath new tee
-      const tileType = store.grid[row][col].type;
+      store.clearHole(holeId);
+      const tileType = store.grid[newRow][newCol].type;
       if (tileType !== 'fairway' && tileType !== 'green') {
-        store.setTile(col, row, 'fairway');
+        store.setTile(newCol, newRow, 'fairway');
         this.refreshGrid();
       }
-      store.setTee(this.selectedHoleId, col, row);
+      store.setTee(holeId, newCol, newRow);
       this.refreshHoleOverlays();
       this.updateHoleUI();
-    }
+      overlay.remove();
+    });
+    btnRow.appendChild(confirmBtn);
+
+    modal.appendChild(btnRow);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
   }
 
   private showTemporaryMessage(msg: string): void {
