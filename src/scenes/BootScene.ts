@@ -171,6 +171,13 @@ export class BootScene extends Phaser.Scene {
     ballG.generateTexture('ball', 8, 8);
     ballG.destroy();
 
+    // Generic particle (small white dot) — used for splash effects, tinted at runtime
+    const particleG = this.add.graphics();
+    particleG.fillStyle(0xffffff, 1);
+    particleG.fillCircle(3, 3, 3);
+    particleG.generateTexture('particle', 6, 6);
+    particleG.destroy();
+
     // Player ball (for challenge mode) — brighter orange/red
     const playerBallG = this.add.graphics();
     playerBallG.fillStyle(0xff6600, 1);

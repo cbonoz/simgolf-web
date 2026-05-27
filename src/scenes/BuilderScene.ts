@@ -3377,6 +3377,7 @@ export class BuilderScene extends Phaser.Scene {
     // SFX based on landing terrain
     if (tile.type === 'water') {
       this.musicScene.playSfx('splash');
+      this.triggerWaterSplash(landingCol, landingRow);
     } else if (tile.type === 'trees') {
       this.musicScene.playSfx('tree');
     }
@@ -3429,6 +3430,42 @@ export class BuilderScene extends Phaser.Scene {
       // Don't update tilePos here — let transitionToNext handle walking
       // Store the landing position for walking
       walkTarget: newState === 'reacting' ? newTilePos : null,
+    });
+  }
+
+  /**
+   * Trigger a water splash particle effect at the landing tile.
+   * Uses a one-shot ParticleEmitter with blue/white particles that burst
+   * upward and outward, then fade out.
+   */
+  private triggerWaterSplash(col: number, row: number): void {
+    const pos = this.tileToWorld(col, row);
+    // Position at tile center, slightly above surface for visibility
+    const x = pos.x;
+    const y = pos.y - 4;
+
+    const emitter = new Phaser.GameObjects.Particles.ParticleEmitter(
+      this, x, y, 'particle',
+      {
+        speed: { min: 40, max: 100 },
+        angle: { min: 220, max: 320 },
+        lifespan: { min: 400, max: 900 },
+        scale: { start: 1.2, end: 0 },
+        alpha: { start: 1, end: 0 },
+        gravityY: 200,
+        quantity: 1,
+        tint: [0x3a7ecf, 0x6ba3e8, 0x87ceeb, 0xffffff],
+        radial: true,
+        emitting: false,
+      }
+    );
+    emitter.setDepth(10000);
+    this.add.existing(emitter);
+
+    // Burst 15 particles and auto-destroy after the longest lifespan
+    emitter.explode(15, x, y);
+    this.time.delayedCall(1200, () => {
+      emitter.destroy();
     });
   }
 
