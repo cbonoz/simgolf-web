@@ -42,7 +42,7 @@ export class BuilderScene extends Phaser.Scene {
   private playerScorecard: number[] = [];
   private opponentId: number | null = null;
   private opponentScorecard: number[] = [];
-  private playerState: 'addressing' | 'aiming' | 'powering' | 'flight' | 'walking' | 'hole_complete' | 'complete' = 'addressing';
+  private playerState: 'addressing' | 'aiming' | 'powering' | 'flight' | 'walking' | 'hole_complete' | 'complete' | 'waiting' = 'addressing';
   private aimStartX = 0;
   private aimStartY = 0;
   private aimEndX = 0;
@@ -662,12 +662,13 @@ export class BuilderScene extends Phaser.Scene {
       ? this.opponentScorecard.reduce((a, b) => a + b, 0)
       : this.playerTotalStrokes + 999; // opponent DNF — huge win
 
-    // Don't show results if opponent hasn't recorded any scores yet (still playing)
-    // This prevents showing "You Win!" when the opponent hasn't had a chance to play
-    if (this.opponentScorecard.length === 0) {
-      this.showTemporaryMessage('⏳ Waiting for the opponent to finish the hole...');
+    // Don't show results until opponent has completed at least as many holes as the player
+    if (this.opponentScorecard.length < this.playerScorecard.length) {
+      const waitingMsg = this.opponentScorecard.length === 0
+        ? '⏳ Waiting for the opponent to finish the hole...'
+        : `⏳ Opponent on hole ${this.opponentScorecard.length + 1}...`;
+      this.showTemporaryMessage(waitingMsg);
       this.playerState = 'waiting';
-      // Advance to next frame — the opponent will eventually finish via AI
       return;
     }
 
