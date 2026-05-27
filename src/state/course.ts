@@ -260,7 +260,9 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       if (!raw) return false;
       const data = JSON.parse(raw);
       set({
-        grid: data.grid,
+        grid: data.grid.map((row: Tile[]) =>
+          row.map((tile) => ({ ...tile, height: tile.height ?? 0 }))
+        ),
         holes: data.holes,
         money: data.money,
         debt: data.debt ?? 0,
@@ -335,7 +337,9 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         console.warn(`Unknown save version ${data.version}, attempting to load anyway`);
       }
       set({
-        grid: data.grid,
+        grid: data.grid.map((row: Tile[]) =>
+          row.map((tile) => ({ ...tile, height: tile.height ?? 0 }))
+        ),
         holes: data.holes,
         money: data.money,
         debt: data.debt ?? 0,

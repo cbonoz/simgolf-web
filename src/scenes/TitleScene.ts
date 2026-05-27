@@ -105,6 +105,9 @@ export class TitleScene extends Phaser.Scene {
 
     this.events.on('shutdown', () => {
       fileInput.remove();
+      // Stop all timers and tweens
+      this.time.removeAllEvents();
+      this.tweens.killAll();
       this.cleanupBgSprites();
     });
 

@@ -1694,7 +1694,7 @@ export class BuilderScene extends Phaser.Scene {
       const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const vsPar = store.courseRecord - store.courseRecordPar;
       const parStr = vsPar <= 0 ? `${vsPar}` : `+${vsPar}`;
-      this.courseRecordEl.textContent = `🏆 Course Record: ${store.courseRecord} (Par ${store.courseRecordPar}, ${parStr}) — ${dateStr}`;
+      this.courseRecordEl.textContent = `🏆 Course Record: ${parStr} (Par: ${store.courseRecordPar}) — ${dateStr}`;
     } else {
       this.courseRecordEl.textContent = '';
     }
