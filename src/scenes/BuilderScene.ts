@@ -708,36 +708,20 @@ export class BuilderScene extends Phaser.Scene {
     // Play swing SFX
     try { music.playSfx('swing'); } catch (_) {}
 
-    // PUTTING: If the player is on the green, show a rolling animation to the cup
+    // PUTTING: If the player is on the green, putt to the cup
     const currentTile = store.grid[this.playerRow][this.playerCol];
     if (currentTile.type === 'green' && hole?.cup) {
-      const distToCup = Math.abs(this.playerCol - hole.cup.col) + Math.abs(this.playerRow - hole.cup.row);
-      if (distToCup <= 15) {
-        // Putt: animate ball rolling along the ground to the cup
-        this.playerState = 'flight';
-        const puttBall = new Ball(
-          this, this.playerCol, this.playerRow,
-          hole.cup.col, hole.cup.row,
-          this.OFFSET_X, this.OFFSET_Y, 300,
-          () => {
-            this.playerCol = hole.cup.col;
-            this.playerRow = hole.cup.row;
-            this.playerStrokes++;
-            this.playerState = 'hole_complete';
-            this.updatePlayerMarker();
-            this.updateChallengeScorecard();
-            try { music.playSfx('cup'); } catch (_) {}
-            this.showTemporaryMessage('🏌️ Putted it in!');
-            this.followPlayer();
-            // Clean up the putt ball sprite
-            puttBall.removeSprite();
-          }
-        );
-        puttBall.sprite.setTexture('ball_player');
-        puttBall.sprite.setScale(0.9);
-        this.playerBall = puttBall;
-        return;
-      }
+      // Putt: teleport ball to cup for reliability, show visual feedback
+      this.playerCol = hole.cup.col;
+      this.playerRow = hole.cup.row;
+      this.playerStrokes++;
+      this.playerState = 'hole_complete';
+      this.updatePlayerMarker();
+      this.updateChallengeScorecard();
+      try { music.playSfx('cup'); } catch (_) {}
+      this.showTemporaryMessage('🏌️ Sunk the putt!');
+      this.followPlayer();
+      return;
     }
 
     // REGULAR SHOT: calculate landing with inaccuracy
