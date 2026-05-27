@@ -1223,8 +1223,11 @@ export class BuilderScene extends Phaser.Scene {
       this.holeControlsContainer.style.display = 'none';
       this.heightControlsContainer.style.display = 'flex';
     } else {
-      // Collapse the palette
-      this.terrainPalette.style.display = 'none';
+      // Deselected — keep palette visible but show no tool content
+      this.terrainPalette.style.display = 'flex';
+      this.terrainButtonsContainer.style.display = 'none';
+      this.holeControlsContainer.style.display = 'none';
+      this.heightControlsContainer.style.display = 'none';
     }
     this.updateHelpText();
   }
