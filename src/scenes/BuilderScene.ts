@@ -1445,13 +1445,12 @@ export class BuilderScene extends Phaser.Scene {
 
     // Update course record display
     const store = courseStore.getState();
-    if (store.courseRecord !== null && store.courseRecordDate) {
+    if (store.courseRecord !== null && store.courseRecordDate && store.courseRecordPar !== null) {
       const date = new Date(store.courseRecordDate);
       const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const coursePar = totalCoursePar(store.holes);
-      const vsPar = store.courseRecord - coursePar;
+      const vsPar = store.courseRecord - store.courseRecordPar;
       const parStr = vsPar <= 0 ? `${vsPar}` : `+${vsPar}`;
-      this.courseRecordEl.textContent = `🏆 Course Record: ${store.courseRecord} (${parStr}) — ${dateStr}`;
+      this.courseRecordEl.textContent = `🏆 Course Record: ${store.courseRecord} (Par ${store.courseRecordPar}, ${parStr}) — ${dateStr}`;
     } else {
       this.courseRecordEl.textContent = '';
     }
@@ -2232,7 +2231,8 @@ export class BuilderScene extends Phaser.Scene {
 
     // Update course record if this round is the best
     if (store.courseRecord === null || golfer.totalStrokes < store.courseRecord) {
-      store.setCourseRecord(golfer.totalStrokes, new Date().toISOString());
+      const currentPar = totalCoursePar(store.holes);
+      store.setCourseRecord(golfer.totalStrokes, new Date().toISOString(), currentPar);
     }
     // Track completed score for average
     store.addCompletedScore(golfer.totalStrokes);
