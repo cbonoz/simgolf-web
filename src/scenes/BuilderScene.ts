@@ -30,6 +30,29 @@ export class BuilderScene extends Phaser.Scene {
   // Height mode: raise (+1) or lower (-1)
   private heightMode: 'raise' | 'lower' | null = null;
 
+  // Challenge mode (1:1 player)
+  private challengeMode = false;
+  private challengeActive = false;
+  private playerCol = 0;
+  private playerRow = 0;
+  private playerStrokes = 0;
+  private playerTotalStrokes = 0;
+  private playerCurrentHole = 1;
+  private playerScorecard: number[] = [];
+  private playerState: 'addressing' | 'aiming' | 'powering' | 'flight' | 'walking' | 'hole_complete' | 'complete' = 'addressing';
+  private aimStartX = 0;
+  private aimStartY = 0;
+  private aimEndX = 0;
+  private aimEndY = 0;
+  private aimLine: Phaser.GameObjects.Graphics | null = null;
+  private powerBar: HTMLDivElement | null = null;
+  private powerHeld = false;
+  private powerStartTime = 0;
+  private playerBall: Ball | null = null;
+  private challengeScorecardEl: HTMLDivElement | null = null;
+  private playerWalkTarget: { col: number; row: number } | null = null;
+  private challengeModeBtn: HTMLButtonElement | null = null;
+
   // Revenue tick
   private revenueTickTimer = 0;
   private readonly REVENUE_TICK_INTERVAL = 30000; // ms at 1x scale (30 game seconds)
@@ -282,6 +305,252 @@ export class BuilderScene extends Phaser.Scene {
     }
   }
 
+  // === CHALLENGE MODE ===
+
+  private startChallenge(): void {
+    const store = courseStore.getState();
+    const hole1 = store.holes.find((h) => h.id === 1);
+    if (!hole1?.tee) {
+      this.showTemporaryMessage('Set up hole 1 (tee + cup) first!');
+      return;
+    }
+    this.challengeMode = true;
+    this.challengeActive = true;
+    this.playerCurrentHole = 1;
+    this.playerStrokes = 0;
+    this.playerTotalStrokes = 0;
+    this.playerScorecard = [];
+    this.playerState = 'addressing';
+    this.playerCol = hole1.tee.col;
+    this.playerRow = hole1.tee.row;
+    this.playerWalkTarget = null;
+    this.playerBall = null;
+
+    // Hide AI golfers and builder controls during challenge
+    this.golferSprites.forEach((s) => s.setVisible(false));
+    this.terrainPalette.style.display = 'none';
+
+    if (this.challengeModeBtn) {
+      this.challengeModeBtn.textContent = '⏹️ End Challenge';
+      this.challengeModeBtn.addEventListener('click', () => this.endChallenge());
+    }
+
+    this.createChallengeScorecard();
+    this.showTemporaryMessage('🎮 Challenge started! Click the course to aim, hold for power, release to swing!');
+  }
+
+  private endChallenge(): void {
+    this.challengeMode = false;
+    this.challengeActive = false;
+    this.playerState = 'complete';
+    this.cleanupChallengeUI();
+    this.golferSprites.forEach((s) => s.setVisible(true));
+    if (this.aimLine) { this.aimLine.destroy(); this.aimLine = null; }
+    if (this.powerBar) { this.powerBar.remove(); this.powerBar = null; }
+    this.terrainPalette.style.display = 'flex';
+    if (this.challengeModeBtn) {
+      this.challengeModeBtn.textContent = '🎮 Start Challenge';
+    }
+  }
+
+  private createChallengeScorecard(): void {
+    this.challengeScorecardEl = document.createElement('div');
+    this.challengeScorecardEl.id = 'challenge-scorecard';
+    this.challengeScorecardEl.style.cssText = `
+      position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 100;
+      background: rgba(0,0,0,0.85); border-radius: 8px; padding: 8px 16px;
+      color: #fff; font-family: sans-serif; font-size: 12px; line-height: 1.4;
+      border: 1px solid #e67e22; text-align: center; white-space: nowrap;
+    `;
+    document.body.appendChild(this.challengeScorecardEl);
+    this.updateChallengeScorecard();
+  }
+
+  private updateChallengeScorecard(): void {
+    if (!this.challengeScorecardEl) return;
+    const store = courseStore.getState();
+    const hole = store.holes.find((h) => h.id === this.playerCurrentHole);
+    const par = hole?.par ?? 3;
+    const scorecardStr = this.playerScorecard.map((s, i) => {
+      const h = store.holes.find((hh) => hh.id === i + 1);
+      const p = h?.par ?? 3;
+      const vs = s - p;
+      return vs <= 0 ? `${s} (${vs})` : `${s} (+${vs})`;
+    }).join(' | ');
+
+    let totalVsPar = this.playerTotalStrokes;
+    for (let i = 0; i < this.playerScorecard.length; i++) {
+      const h = store.holes.find((hh) => hh.id === i + 1);
+      totalVsPar -= h?.par ?? 3;
+    }
+    const totalStr = totalVsPar <= 0 ? `${this.playerTotalStrokes} (${totalVsPar})` : `${this.playerTotalStrokes} (+${totalVsPar})`;
+
+    const currentPar = hole?.par ?? 3;
+    const inProgress = `H${this.playerCurrentHole}: ${this.playerStrokes}/${currentPar} strokes`;
+
+    let html = `<div style="font-weight:bold;color:#e67e22;">🏌️ Challenge Mode</div>`;
+    if (this.playerScorecard.length > 0) {
+      html += `<div style="color:#aaa;font-size:11px;">${scorecardStr}</div>`;
+    }
+    html += `<div style="margin-top:2px;">${inProgress} | <span style="color:#ffd700;">Total: ${totalStr}</span></div>`;
+    this.challengeScorecardEl.innerHTML = html;
+  }
+
+  private cleanupChallengeUI(): void {
+    if (this.challengeScorecardEl) {
+      this.challengeScorecardEl.remove();
+      this.challengeScorecardEl = null;
+    }
+    if (this.powerBar) {
+      this.powerBar.remove();
+      this.powerBar = null;
+    }
+    if (this.aimLine) {
+      this.aimLine.destroy();
+      this.aimLine = null;
+    }
+  }
+
+  private updateChallenge(delta: number): void {
+    if (!this.challengeActive || this.playerState === 'complete') return;
+
+    if (this.playerState === 'flight' && this.playerBall) {
+      this.playerBall.update(delta);
+      if (this.playerBall.complete) {
+        // Ball landed
+        this.playerBall = null;
+        this.playerStrokes++;
+        this.playerState = 'addressing';
+        this.playerWalkTarget = null;
+        this.updateChallengeScorecard();
+      }
+      return;
+    }
+
+    if (this.playerState === 'hole_complete') {
+      this.playerScorecard.push(this.playerStrokes);
+      this.playerTotalStrokes += this.playerStrokes;
+      this.challengeAdvanceHole();
+      return;
+    }
+  }
+
+  private challengeAdvanceHole(): void {
+    const store = courseStore.getState();
+    const nextHole = store.holes.find((h) => h.id === this.playerCurrentHole + 1);
+    if (!nextHole?.tee) {
+      // Round complete
+      this.challengeActive = false;
+      this.playerState = 'complete';
+      this.showTemporaryMessage(`🏆 Round complete! Total: ${this.playerTotalStrokes} strokes`);
+      if (this.challengeModeBtn) this.challengeModeBtn.textContent = '🎮 Play Again';
+      this.endChallenge();
+      return;
+    }
+    this.playerCurrentHole++;
+    this.playerStrokes = 0;
+    this.playerCol = nextHole.tee.col;
+    this.playerRow = nextHole.tee.row;
+    this.playerState = 'addressing';
+    this.playerWalkTarget = null;
+    this.updateChallengeScorecard();
+  }
+
+  private executeChallengeSwing(aimCol: number, aimRow: number, power: number): void {
+    const store = courseStore.getState();
+    // Calculate landing tile based on aim direction and power
+    const maxDistance = Math.round(power * 10); // 0-10 tiles based on power (0..1 → 0..10)
+    const dCol = aimCol - this.playerCol;
+    const dRow = aimRow - this.playerRow;
+    const dist = Math.sqrt(dCol * dCol + dRow * dRow) || 1;
+    const steps = Math.min(maxDistance, Math.round(dist));
+    let landingCol = this.playerCol;
+    let landingRow = this.playerRow;
+
+    for (let i = 0; i < steps; i++) {
+      const progress = (i + 1) / steps;
+      const nc = Math.round(this.playerCol + dCol / dist * steps * progress);
+      const nr = Math.round(this.playerRow + dRow / dist * steps * progress);
+      // Check bounds
+      if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) break;
+      // Check trees
+      const tile = store.grid[nr][nc];
+      if (tile.type === 'trees') {
+        // Deflect — stop just before tree
+        landingCol = nc >= this.playerCol ? nc - 1 : nc + 1;
+        landingRow = nr >= this.playerRow ? nr - 1 : nr + 1;
+        break;
+      }
+      if (tile.type === 'water') {
+        // Splash — stop at this tile but react
+        landingCol = nc;
+        landingRow = nr;
+        break;
+      }
+      landingCol = nc;
+      landingRow = nr;
+    }
+
+    // Clamp
+    landingCol = Math.max(0, Math.min(GRID_COLS - 1, landingCol));
+    landingRow = Math.max(0, Math.min(GRID_ROWS - 1, landingRow));
+
+    // Create ball entity for flight animation
+    const maxArc = store.grid[landingRow][landingCol].type === 'water' || store.grid[landingRow][landingCol].type === 'green' ? 800 : 500;
+    this.playerBall = new Ball(
+      this, this.playerCol, this.playerRow,
+      landingCol, landingRow,
+      this.OFFSET_X, this.OFFSET_Y, maxArc,
+      () => {
+        // on complete — ball sits at landing
+        this.playerCol = landingCol;
+        this.playerRow = landingRow;
+      }
+    );
+
+    // Check for putting
+    const landingTile = store.grid[landingRow][landingCol];
+    const hole = store.holes.find((h) => h.id === this.playerCurrentHole);
+    if (landingTile.type === 'green' && hole?.cup) {
+      const distToCup = Math.abs(landingCol - hole.cup.col) + Math.abs(landingRow - hole.cup.row);
+      if (distToCup <= 3) {
+        // Auto-putt: ball goes to cup
+        this.playerCol = hole.cup.col;
+        this.playerRow = hole.cup.row;
+        this.playerState = 'hole_complete';
+        this.updateChallengeScorecard();
+        return;
+      }
+    }
+
+    this.playerState = 'flight';
+  }
+
+  /** Handle mouse interaction for challenge mode: aiming + power */
+  private handleChallengeInput(pointer: Phaser.Input.Pointer): void {
+    if (this.playerState !== 'addressing') return;
+
+    const tile = this.worldToTile(pointer.worldX, pointer.worldY);
+    const dx = tile.col - this.playerCol;
+    const dy = tile.row - this.playerRow;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) return;
+
+    // Draw aim line
+    if (!this.aimLine) {
+      this.aimLine = this.add.graphics();
+      this.aimLine.setDepth(9998);
+    }
+    this.aimLine.clear();
+    this.aimLine.lineStyle(2, 0xffffff, 0.6);
+    const from = this.tileToWorld(this.playerCol, this.playerRow);
+    const to = this.tileToWorld(tile.col, tile.row);
+    this.aimLine.beginPath();
+    this.aimLine.moveTo(from.x, from.y - 4);
+    this.aimLine.lineTo(to.x, to.y - 4);
+    this.aimLine.strokePath();
+  }
+
   private updateHelpText(): void {
     if (this.builderMode === 'paint') {
       this.helpText.textContent = 'Left-click: Paint | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
@@ -525,6 +794,14 @@ export class BuilderScene extends Phaser.Scene {
 
     // --- Panning (right-click + drag, or left-click + drag when deselected) ---
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      // Challenge mode: start aiming/power
+      if (this.challengeActive && pointer.leftButtonDown() && this.playerState === 'addressing') {
+        this.powerHeld = true;
+        this.powerStartTime = Date.now();
+        this.handleChallengeInput(pointer);
+        return;
+      }
+
       if (pointer.rightButtonDown() || (this.builderMode === 'none' && pointer.leftButtonDown())) {
         // Start panning
         this.isPanning = true;
@@ -566,6 +843,28 @@ export class BuilderScene extends Phaser.Scene {
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      // Challenge mode: update aim line and show power bar
+      if (this.challengeActive && this.powerHeld && this.playerState === 'addressing') {
+        this.handleChallengeInput(pointer);
+        // Update power bar
+        const holdMs = Date.now() - this.powerStartTime;
+        const power = Math.min(holdMs / 2000, 1);
+        if (!this.powerBar) {
+          this.powerBar = document.createElement('div');
+          this.powerBar.id = 'challenge-power-bar';
+          this.powerBar.style.cssText = `
+            position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 105;
+            width: 200px; height: 12px; background: #333; border-radius: 6px;
+            border: 1px solid #e67e22; overflow: hidden;
+          `;
+          document.body.appendChild(this.powerBar);
+        }
+        this.powerBar.innerHTML = `<div style="height:100%;width:${power * 100}%;background:${
+          power < 0.5 ? '#4caf50' : power < 0.8 ? '#ff9800' : '#f44336'
+        };border-radius:4px;transition:width 0.05s;"></div>`;
+        return;
+      }
+
       // Panning with right button held
       if (this.isPanning) {
         const dx = pointer.x - this.panStart.x;
@@ -603,6 +902,21 @@ export class BuilderScene extends Phaser.Scene {
     });
 
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      // Challenge mode: release to swing
+      if (this.challengeActive && this.powerHeld && this.playerState === 'addressing') {
+        this.powerHeld = false;
+        const holdMs = Date.now() - this.powerStartTime;
+        const power = Math.min(holdMs / 2000, 1);
+        // Clean up power bar
+        if (this.powerBar) { this.powerBar.remove(); this.powerBar = null; }
+        // Get aim tile from pointer position
+        const aimTile = this.worldToTile(pointer.worldX, pointer.worldY);
+        this.executeChallengeSwing(aimTile.col, aimTile.row, power);
+        // Clear aim line
+        if (this.aimLine) { this.aimLine.clear(); }
+        return;
+      }
+
       if (pointer.rightButtonDown() || this.isPanning) {
         this.isPanning = false;
         return;
@@ -1322,6 +1636,17 @@ export class BuilderScene extends Phaser.Scene {
     this.scorecardEl.style.cssText = 'color: #ccc; font-size: 10px; line-height: 1.4; max-height: 180px; overflow-y: auto;';
     playSection.appendChild(this.scorecardEl);
 
+    // Challenge Mode button
+    this.challengeModeBtn = document.createElement('button');
+    this.challengeModeBtn.textContent = '🎮 Start Challenge';
+    this.challengeModeBtn.style.cssText = `
+      margin-top: 6px; padding: 8px; border: 2px solid #e67e22; border-radius: 6px;
+      cursor: pointer; font-size: 12px; background: #5a3a1a; color: #f0c27a;
+      font-weight: bold; width: 100%;
+    `;
+    this.challengeModeBtn.addEventListener('click', () => this.startChallenge());
+    playSection.appendChild(this.challengeModeBtn);
+
     document.body.appendChild(playSection);
 
     // Download Save button
@@ -1724,7 +2049,7 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    // Keyboard camera pan
+    // Keyboard camera pan — skip full update if challenge active handles separately
     if (this.cursors) {
       const cam = this.cameras.main;
       const speed = 5;
@@ -1732,6 +2057,14 @@ export class BuilderScene extends Phaser.Scene {
       if (this.cursors.right.isDown) cam.scrollX += speed;
       if (this.cursors.up.isDown) cam.scrollY -= speed;
       if (this.cursors.down.isDown) cam.scrollY += speed;
+    }
+
+    // Challenge mode — runs independent of playActive/pause
+    if (this.challengeActive) {
+      this.updateChallenge(delta);
+      this.updateChallengeScorecard();
+      this.syncGolferSprites();
+      return;
     }
 
     if (!this.playActive) {
