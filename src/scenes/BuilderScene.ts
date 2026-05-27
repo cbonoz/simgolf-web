@@ -800,6 +800,7 @@ export class BuilderScene extends Phaser.Scene {
     this.playerWalkTarget = null;
     this.updatePlayerMarker();
     this.updateChallengeScorecard();
+    this.followPlayer();
   }
 
   private executeChallengeSwing(aimCol: number, aimRow: number, power: number): void {
