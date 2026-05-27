@@ -39,6 +39,8 @@ export class BuilderScene extends Phaser.Scene {
   private playerTotalStrokes = 0;
   private playerCurrentHole = 1;
   private playerScorecard: number[] = [];
+  private opponentId: number | null = null;
+  private opponentScorecard: number[] = [];
   private playerState: 'addressing' | 'aiming' | 'powering' | 'flight' | 'walking' | 'hole_complete' | 'complete' = 'addressing';
   private aimStartX = 0;
   private aimStartY = 0;
@@ -320,14 +322,33 @@ export class BuilderScene extends Phaser.Scene {
     this.playerStrokes = 0;
     this.playerTotalStrokes = 0;
     this.playerScorecard = [];
+    this.opponentScorecard = [];
+    this.opponentId = null;
     this.playerState = 'addressing';
     this.playerCol = hole1.tee.col;
     this.playerRow = hole1.tee.row;
     this.playerWalkTarget = null;
     this.playerBall = null;
 
-    // Hide AI golfers and builder controls during challenge
-    this.golferSprites.forEach((s) => s.setVisible(false));
+    // Spawn a single AI opponent paired with the player
+    const gStore = golferStore.getState();
+    const opponent = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
+    if (opponent) {
+      this.opponentId = opponent.id;
+      gStore.updateGolfer(opponent.id, {
+        state: 'addressing' as const,
+        stateTimer: GAME_CONFIG.INITIAL_ADDRESS_TIME + opponent.trait.thinkingTime,
+      });
+      // Create sprite for the opponent
+      const pos = this.tileToWorld(opponent.tilePos.col, opponent.tilePos.row);
+      const sprite = this.add.sprite(pos.x, pos.y - 4, `golfer_${opponent.colorIndex}`);
+      sprite.setOrigin(0.5, 1);
+      sprite.setScale(1.0);
+      sprite.setDepth(this.getGolferDepth(opponent.tilePos.col, opponent.tilePos.row));
+      this.golferSprites.set(opponent.id, sprite);
+    }
+
+    // Keep AI visible and running — don't hide
     this.terrainPalette.style.display = 'none';
 
     if (this.challengeModeBtn) {
@@ -344,7 +365,13 @@ export class BuilderScene extends Phaser.Scene {
     this.challengeActive = false;
     this.playerState = 'complete';
     this.cleanupChallengeUI();
-    this.golferSprites.forEach((s) => s.setVisible(true));
+    // Remove the opponent golfer
+    if (this.opponentId !== null) {
+      golferStore.getState().removeGolfer(this.opponentId);
+      const sprite = this.golferSprites.get(this.opponentId);
+      if (sprite) { sprite.destroy(); this.golferSprites.delete(this.opponentId); }
+      this.opponentId = null;
+    }
     if (this.aimLine) { this.aimLine.destroy(); this.aimLine = null; }
     if (this.powerBar) { this.powerBar.remove(); this.powerBar = null; }
     this.terrainPalette.style.display = 'flex';
@@ -385,14 +412,38 @@ export class BuilderScene extends Phaser.Scene {
     }
     const totalStr = totalVsPar <= 0 ? `${this.playerTotalStrokes} (${totalVsPar})` : `${this.playerTotalStrokes} (+${totalVsPar})`;
 
+    // Opponent score
+    let opponentStr = '';
+    if (this.opponentScorecard.length > 0) {
+      const oppTotal = this.opponentScorecard.reduce((a, b) => a + b, 0);
+      let oppVsPar = oppTotal;
+      for (let i = 0; i < this.opponentScorecard.length; i++) {
+        const h = store.holes.find((hh) => hh.id === i + 1);
+        oppVsPar -= h?.par ?? 3;
+      }
+      const oppParStr = oppVsPar <= 0 ? `${oppTotal} (${oppVsPar})` : `${oppTotal} (+${oppVsPar})`;
+
+      opponentStr = `<div style="color:#aaa;font-size:11px;">`;
+      opponentStr += this.opponentScorecard.map((s, i) => {
+        const h = store.holes.find((hh) => hh.id === i + 1);
+        const p = h?.par ?? 3;
+        const vs = s - p;
+        return vs <= 0 ? `${s} (${vs})` : `${s} (+${vs})`;
+      }).join(' | ');
+      opponentStr += ` | <span style="color:#64b5f6;">Total: ${oppParStr}</span></div>`;
+    }
+
     const currentPar = hole?.par ?? 3;
     const inProgress = `H${this.playerCurrentHole}: ${this.playerStrokes}/${currentPar} strokes`;
 
-    let html = `<div style="font-weight:bold;color:#e67e22;">🏌️ Challenge Mode</div>`;
+    let html = `<div style="font-weight:bold;color:#e67e22;">🏌️ You</div>`;
     if (this.playerScorecard.length > 0) {
-      html += `<div style="color:#aaa;font-size:11px;">${scorecardStr}</div>`;
+      html += `<div style="color:#a8d8a8;font-size:11px;">${scorecardStr} | <span style="color:#ffd700;">Total: ${totalStr}</span></div>`;
     }
-    html += `<div style="margin-top:2px;">${inProgress} | <span style="color:#ffd700;">Total: ${totalStr}</span></div>`;
+    html += `<div style="margin-top:2px;">${inProgress}</div>`;
+    if (opponentStr) {
+      html += `<div style="margin-top:2px;border-top:1px solid #444;padding-top:2px;"><span style="color:#64b5f6;">🤖 Opponent</span></div>${opponentStr}`;
+    }
     this.challengeScorecardEl.innerHTML = html;
   }
 
@@ -2080,18 +2131,21 @@ export class BuilderScene extends Phaser.Scene {
       if (this.cursors.down.isDown) cam.scrollY += speed;
     }
 
-    // Challenge mode — runs independent of playActive/pause
+    // Challenge mode — runs alongside AI processing
     if (this.challengeActive) {
       this.updateChallenge(delta);
       this.updateChallengeScorecard();
-      this.syncGolferSprites();
-      return;
+      // Don't return — let the AI opponent continue processing below
     }
 
     if (!this.playActive) {
       // Still sync sprite positions when paused
       this.syncGolferSprites();
       this.updateScorecard();
+      // Challenge mode: still process player ball flight when paused
+      if (this.challengeActive && this.playerState === 'flight') {
+        this.updateChallenge(delta);
+      }
       return;
     }
 
@@ -2878,6 +2932,11 @@ export class BuilderScene extends Phaser.Scene {
 
     // Show floating emoji + greens fee popup over this golfer
     this.showHoleResultPopup(golfer, par, greensFee);
+
+    // Track opponent scores during challenge mode
+    if (this.challengeActive && golfer.id === this.opponentId) {
+      this.opponentScorecard.push(golfer.strokes);
+    }
 
     // Trigger a spawn only when ALL active golfers have finished hole 1
     // This ensures the initial group clears the first tee before new golfers arrive
