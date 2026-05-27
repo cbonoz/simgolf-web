@@ -94,6 +94,7 @@ export class BuilderScene extends Phaser.Scene {
   private timeControlsContainer!: HTMLDivElement;
   private golferTooltip: HTMLDivElement | null = null;
   private golferCountDisplay!: HTMLDivElement;
+  private clockEl!: HTMLDivElement;
   private playActive = true; // golfers active by default
 
   // Undo/redo
@@ -316,6 +317,61 @@ export class BuilderScene extends Phaser.Scene {
         }, 2500);
       }
       this.updateMoneyDisplay();
+    }
+  }
+
+  /** Apply reputation bonuses from decor buildings (bench, fountain, garden) */
+  private processDecorBonuses(): void {
+    const store = courseStore.getState();
+    const decorBuildings = store.buildings.filter((b) => {
+      const bt = BUILDING_TYPES.find((t) => t.key === b.typeKey);
+      return bt?.category === 'decor';
+    });
+    if (decorBuildings.length === 0) return;
+
+    let totalBonus = 0;
+
+    for (const bld of decorBuildings) {
+      const bt = BUILDING_TYPES.find((t) => t.key === bld.typeKey);
+      if (!bt) continue;
+
+      // Base rates per decor type
+      let base: number;
+      if (bt.key === 'bench') base = 0.1;
+      else if (bt.key === 'fountain') base = 0.15;
+      else if (bt.key === 'garden') base = 0.2;
+      else continue;
+
+      // Check adjacency within 3 tiles of any tee or cup
+      const hasAdjacency = store.holes.some((h) => {
+        const targets = [h.tee, h.cup].filter(Boolean);
+        return targets.some((t) => {
+          if (!t) return false;
+          const dist = Math.abs(bld.col - t.col) + Math.abs(bld.row - t.row);
+          return dist <= 3;
+        });
+      });
+
+      const bonus = hasAdjacency ? base * 1.5 : base;
+      totalBonus += bonus;
+    }
+
+    // Apply accumulated reputation
+    for (let i = 0; i < 3; i++) {
+      store.addReputation(2.5 + totalBonus);
+    }
+
+    // Decor gives a fixed reputation value (2.5 + decor bonus) added 3x for stronger effect
+    // so total rep increase ≈ totalBonus * 3 on the rolling average
+
+    // Show a decor notification
+    if (totalBonus > 0 && this.revenueIndicatorEl) {
+      const sbBonus = Math.round(totalBonus * 100) / 100;
+      this.revenueIndicatorEl.textContent = `🌿 +${sbBonus} rep (decor)`;
+      this.revenueIndicatorEl.style.opacity = '1';
+      setTimeout(() => {
+        this.revenueIndicatorEl.style.opacity = '0';
+      }, 2500);
     }
   }
 
@@ -1599,12 +1655,21 @@ export class BuilderScene extends Phaser.Scene {
     toast.textContent = msg;
     toast.style.cssText = `
       position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      background: rgba(200, 50, 50, 0.9); color: #fff; padding: 12px 20px;
-      border-radius: 6px; font-family: sans-serif; font-size: 14px; z-index: 200;
-      pointer-events: none;
+      background: rgba(0,0,0,0.85); color: #fff; padding: 12px 24px; border-radius: 8px;
+      font-family: sans-serif; font-size: 16px; z-index: 300;
+      border: 2px solid #4a8f3f; animation: fadeIn 0.2s;
     `;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
+    setTimeout(() => toast.remove(), 2500);
+  }
+
+  private formatGameTimeDisplay(minutes: number): string {
+    const totalMinutes = Math.floor(minutes);
+    const hour24 = Math.floor(totalMinutes / 60) % 24;
+    const min = totalMinutes % 60;
+    const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+    const amPm = hour24 < 12 ? 'AM' : 'PM';
+    return `${hour12}:${min.toString().padStart(2, '0')} ${amPm}`;
   }
 
   private refreshHoleOverlays(): void {
@@ -1911,6 +1976,12 @@ export class BuilderScene extends Phaser.Scene {
     playTitle.textContent = '⛳ Golfers';
     playTitle.style.cssText = 'color: #fff; font-weight: bold; font-size: 13px;';
     playSection.appendChild(playTitle);
+
+    // Clock display
+    this.clockEl = document.createElement('div');
+    this.clockEl.style.cssText = 'color: #ffd700; font-size: 14px; font-weight: bold; text-align: center; padding: 4px 0;';
+    this.clockEl.textContent = '6:00 AM - Day 1';
+    playSection.appendChild(this.clockEl);
 
     // Time controls
     this.timeControlsContainer = document.createElement('div');
@@ -2425,11 +2496,24 @@ export class BuilderScene extends Phaser.Scene {
 
     const scaledDelta = delta * this.timeScale;
 
-    // Building revenue tick
+    // Advance game time: 1 real second = 1 game minute at 1x
+    if (this.timeScale > 0) {
+      const gameMinutes = scaledDelta / 1000;
+      if (gameMinutes > 0) {
+        courseStore.getState().advanceGameTime(gameMinutes);
+      }
+    }
+
+    // Update clock display
+    const { gameTimeMinutes, dayCount } = courseStore.getState();
+    this.clockEl.textContent = `${this.formatGameTimeDisplay(gameTimeMinutes)} - Day ${dayCount}`;
+
+    // Building revenue tick + decor reputation bonuses
     this.revenueTickTimer += scaledDelta;
     if (this.revenueTickTimer >= this.REVENUE_TICK_INTERVAL) {
       this.revenueTickTimer = 0;
       this.processRevenueTick();
+      this.processDecorBonuses();
     }
 
     // Update ball flights (per-golfer, supports simultaneous swings)

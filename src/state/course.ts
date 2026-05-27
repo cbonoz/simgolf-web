@@ -23,6 +23,27 @@ export interface HoleConfig {
   par: number;
 }
 
+export type DayPhase = 'morning' | 'peak' | 'evening' | 'night';
+
+/** Convert game time minutes (since 6:00) to a readable phase */
+export function getDayPhase(minutes: number): DayPhase {
+  const hour = (minutes / 60) % 24;
+  if (hour >= 6 && hour < 10) return 'morning';
+  if (hour >= 10 && hour < 18) return 'peak';
+  if (hour >= 18 && hour < 20) return 'evening';
+  return 'night';
+}
+
+/** Format game time as HH:MM */
+export function formatGameTime(minutes: number): string {
+  const totalMinutes = Math.floor(minutes);
+  const hour = (Math.floor(totalMinutes / 60) % 24);
+  const min = totalMinutes % 60;
+  const h = hour % 12 === 0 ? 12 : hour % 12;
+  const amPm = hour < 12 || hour >= 24 ? 'AM' : 'PM';
+  return `${h}:${min.toString().padStart(2, '0')} ${amPm}`;
+}
+
 export interface CourseState {
   grid: Tile[][];
   holes: HoleConfig[];
@@ -35,6 +56,11 @@ export interface CourseState {
   courseRecordDate: string | null; // ISO date when record was set
   courseRecordPar: number | null; // total course par when record was set
   completedScores: number[]; // total strokes from all completed rounds
+  gameTimeMinutes: number; // minutes since 6:00 AM (starts at 360)
+  dayCount: number; // current day number
+  setGameTime: (minutes: number) => void;
+  advanceGameTime: (deltaMinutes: number) => void;
+  nextDay: () => void; // reset time to 6:00 AM, increment day
   setTile: (col: number, row: number, type: TerrainType) => void;
   setTileHeight: (col: number, row: number, height: number) => void;
   adjustHeight: (col: number, row: number, delta: number) => void;
@@ -137,6 +163,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   courseRecordDate: null,
   courseRecordPar: null,
   completedScores: [],
+  gameTimeMinutes: 360, // 6:00 AM
+  dayCount: 1,
 
   setTile: (col, row, type) =>
     set((state) => {
@@ -307,6 +335,8 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       courseRecordDate: null,
       courseRecordPar: null,
       completedScores: [],
+      gameTimeMinutes: 360,
+      dayCount: 1,
     });
   },
 
@@ -414,5 +444,21 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   addCompletedScore: (strokes) =>
     set((state) => ({
       completedScores: [...state.completedScores, strokes],
+    })),
+
+  setGameTime: (minutes) =>
+    set({ gameTimeMinutes: minutes }),
+
+  advanceGameTime: (deltaMinutes) =>
+    set((state) => {
+      // Game time wraps — a day is 1440 minutes
+      const total = state.gameTimeMinutes + deltaMinutes;
+      return { gameTimeMinutes: total };
+    }),
+
+  nextDay: () =>
+    set((state) => ({
+      gameTimeMinutes: 360, // reset to 6:00 AM
+      dayCount: state.dayCount + 1,
     })),
 }));
