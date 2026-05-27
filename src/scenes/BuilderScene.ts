@@ -815,6 +815,26 @@ export class BuilderScene extends Phaser.Scene {
     // Play swing SFX
     try { music.playSfx('swing'); } catch (_) {}
 
+    // Capping: if at max strokes, force hole_complete
+    if (this.playerStrokes >= MAX_STROKES_PER_HOLE) {
+      this.playerState = 'hole_complete';
+      this.updateChallengeScorecard();
+      this.showTemporaryMessage('😤 Max strokes reached!');
+      return;
+    }
+
+    // Auto-hole-out if standing on the exact cup tile
+    if (hole?.cup && this.playerCol === hole.cup.col && this.playerRow === hole.cup.row) {
+      this.playerStrokes++;
+      this.playerState = 'hole_complete';
+      this.updatePlayerMarker();
+      this.updateChallengeScorecard();
+      try { music.playSfx('cup'); } catch (_) {}
+      this.showTemporaryMessage('🏌️ Holed out!');
+      this.followPlayer();
+      return;
+    }
+
     // PUTTING: If the player is on the green (and not on the tee), putt to the cup
     const currentTile = store.grid[this.playerRow][this.playerCol];
     if (currentTile.type === 'green' && hole?.cup && this.playerStrokes > 0) {
