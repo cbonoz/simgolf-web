@@ -46,3 +46,19 @@ export function calculatePar(distance: number): number {
   if (distance <= 14) return 4;  // Par 4
   return 5;                       // Par 5
 }
+
+/**
+ * Compute total par for all configured holes (those with both tee and cup).
+ */
+export function totalCoursePar(holes: { tee: unknown; cup: unknown; par: number }[]): number {
+  return holes
+    .filter((h) => h.tee && h.cup)
+    .reduce((sum, h) => sum + h.par, 0);
+}
+
+/**
+ * Count how many holes are fully configured (tee + cup).
+ */
+export function countConfiguredHoles(holes: { tee: unknown; cup: unknown }[]): number {
+  return holes.filter((h) => h.tee && h.cup).length;
+}

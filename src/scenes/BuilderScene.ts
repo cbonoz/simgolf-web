@@ -3,7 +3,7 @@ import { courseStore, Tile, HoleConfig, PlacedBuilding, getClubhousePosition } f
 import { golferStore, Golfer, generateThought } from '../state/golfers';
 import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
 import { GAME_CONFIG } from '../utils/gameConfig';
-import { tileToScreen, screenToTile, clampTile, calculatePar } from '../utils/helpers';
+import { tileToScreen, screenToTile, clampTile, calculatePar, totalCoursePar, countConfiguredHoles } from '../utils/helpers';
 import { Ball } from '../entities/Ball';
 import { MusicScene } from './MusicScene';
 
@@ -375,6 +375,17 @@ export class BuilderScene extends Phaser.Scene {
       if (clickedBuilding) {
         this.showBuildingTooltip(clickedBuilding);
         return;
+      }
+
+      // Check if clicking on a tee or cup marker on the course tile
+      const clickedTile = this.worldToTile(pointer.worldX, pointer.worldY);
+      const gridTile = courseStore.getState().grid[clickedTile.row]?.[clickedTile.col];
+      if (gridTile && (gridTile.isTee || gridTile.isCup) && pointer.leftButtonDown()) {
+        const holeConfig = courseStore.getState().holes.find((h) => h.id === gridTile.hole);
+        if (holeConfig) {
+          this.showHoleTooltip(holeConfig, gridTile.isTee, pointer.worldX, pointer.worldY);
+          return;
+        }
       }
 
       // Left click: start painting
@@ -1419,8 +1430,8 @@ export class BuilderScene extends Phaser.Scene {
     if (store.courseRecord !== null && store.courseRecordDate) {
       const date = new Date(store.courseRecordDate);
       const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const totalPar = store.holes.reduce((sum, h) => sum + h.par, 0);
-      const vsPar = store.courseRecord - totalPar;
+      const coursePar = totalCoursePar(store.holes);
+      const vsPar = store.courseRecord - coursePar;
       const parStr = vsPar <= 0 ? `${vsPar}` : `+${vsPar}`;
       this.courseRecordEl.textContent = `🏆 Course Record: ${store.courseRecord} (${parStr}) — ${dateStr}`;
     } else {
@@ -1428,15 +1439,15 @@ export class BuilderScene extends Phaser.Scene {
     }
 
     // Course par + average
-    const totalPar = store.holes.reduce((sum, h) => sum + h.par, 0);
-    const numHoles = store.holes.filter((h) => h.tee && h.cup).length;
+    const coursePar = totalCoursePar(store.holes);
+    const numHoles = countConfiguredHoles(store.holes);
     if (numHoles > 0) {
       const scores = store.completedScores;
       if (scores.length > 0) {
         const avg = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
-        this.courseAvgEl.textContent = `Par ${totalPar} · Avg: ${avg.toFixed(1)} (${scores.length} rounds)`;
+        this.courseAvgEl.textContent = `Par ${coursePar} · Avg: ${avg.toFixed(1)} (${scores.length} rounds)`;
       } else {
-        this.courseAvgEl.textContent = `Par ${totalPar} (${numHoles} holes)`;
+        this.courseAvgEl.textContent = `Par ${coursePar} (${numHoles} holes)`;
       }
     } else {
       this.courseAvgEl.textContent = '';
@@ -1610,6 +1621,59 @@ export class BuilderScene extends Phaser.Scene {
     if (this.buildingTooltip) {
       this.buildingTooltip.remove();
       this.buildingTooltip = null;
+    }
+  }
+
+  // === HOLE CLICK INFO ===
+
+  private holeTooltip: HTMLDivElement | null = null;
+
+  private showHoleTooltip(hole: HoleConfig, isTee: boolean, worldX: number, worldY: number): void {
+    this.hideHoleTooltip();
+    const cam = this.cameras.main;
+    const screenX = worldX - cam.scrollX;
+    const screenY = (worldY - 4) - cam.scrollY;
+
+    const tooltip = document.createElement('div');
+    tooltip.id = 'hole-tooltip';
+    tooltip.style.cssText = `
+      position: fixed; z-index: 200; background: rgba(0,0,0,0.9); border-radius: 8px;
+      padding: 10px 14px; color: #fff; font-family: sans-serif; font-size: 12px;
+      max-width: 200px; pointer-events: none; line-height: 1.5;
+      border: 1px solid #555;
+      left: ${screenX + 15}px; top: ${screenY - 30}px;
+    `;
+
+    const label = isTee ? 'Tee' : 'Cup';
+    const marker = isTee ? '⛳' : '🚩';
+
+    const distance = hole.tee && hole.cup
+      ? Math.abs(hole.tee.col - hole.cup.col) + Math.abs(hole.tee.row - hole.cup.row)
+      : null;
+
+    const title = document.createElement('div');
+    title.textContent = `${marker} Hole ${hole.id} — ${label}`;
+    title.style.cssText = 'font-weight: bold; color: #ffcc80; font-size: 14px; margin-bottom: 4px;';
+    tooltip.appendChild(title);
+
+    const details = document.createElement('div');
+    details.style.cssText = 'color: #ccc; font-size: 11px;';
+    let html = `Par ${hole.par}`;
+    if (distance !== null) html += `<br>Distance: ${distance} tiles`;
+    if (hole.tee) html += `<br>Tee: (${hole.tee.col}, ${hole.tee.row})`;
+    if (hole.cup) html += `<br>Cup: (${hole.cup.col}, ${hole.cup.row})`;
+    details.innerHTML = html;
+    tooltip.appendChild(details);
+
+    document.body.appendChild(tooltip);
+    this.holeTooltip = tooltip;
+    setTimeout(() => this.hideHoleTooltip(), 3000);
+  }
+
+  private hideHoleTooltip(): void {
+    if (this.holeTooltip) {
+      this.holeTooltip.remove();
+      this.holeTooltip = null;
     }
   }
 
@@ -2134,8 +2198,8 @@ export class BuilderScene extends Phaser.Scene {
     store.addMoney(roundRevenue);
 
     // Compute satisfaction and update reputation
-    const totalPar = store.holes.reduce((sum, h) => sum + h.par, 0);
-    const scoreVsPar = golfer.totalStrokes - totalPar;
+    const coursePar = totalCoursePar(store.holes);
+    const scoreVsPar = golfer.totalStrokes - coursePar;
     let satisfaction = 3.0;
     if (scoreVsPar <= -3) satisfaction = 5.0;
     else if (scoreVsPar <= 0) satisfaction = 4.0;
@@ -2184,6 +2248,7 @@ export class BuilderScene extends Phaser.Scene {
     this.hideVegetationSidePanel();
     this.hideGolferTooltip();
     this.hideBuildingTooltip();
+    this.hideHoleTooltip();
     this.terrainPalette?.remove();
     document.getElementById('golfer-panel')?.remove();
     document.getElementById('music-player')?.remove();
