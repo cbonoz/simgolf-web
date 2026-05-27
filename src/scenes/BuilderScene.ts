@@ -501,6 +501,19 @@ export class BuilderScene extends Phaser.Scene {
     this.playerMarker.setPosition(pos.x, pos.y - 4);
   }
 
+  /** Pan the camera to follow the player's current position */
+  private followPlayer(): void {
+    const cam = this.cameras.main;
+    const pos = this.tileToWorld(this.playerCol, this.playerRow);
+    this.tweens.add({
+      targets: cam,
+      scrollX: pos.x - cam.width / 2,
+      scrollY: pos.y - cam.height / 2,
+      duration: 400,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
   private updateChallenge(delta: number): void {
     if (!this.challengeActive || this.playerState === 'complete') return;
 
@@ -543,6 +556,11 @@ export class BuilderScene extends Phaser.Scene {
     const prize = Math.round(basePrize * repMult);
 
     store.addMoney(prize);
+
+    // Update course record
+    if (store.courseRecord === null || this.playerTotalStrokes < store.courseRecord) {
+      store.setCourseRecord(this.playerTotalStrokes, new Date().toISOString(), totalCoursePar(store.holes));
+    }
 
     // Build result overlay
     const overlay = document.createElement('div');
@@ -661,26 +679,44 @@ export class BuilderScene extends Phaser.Scene {
 
   private executeChallengeSwing(aimCol: number, aimRow: number, power: number): void {
     const store = courseStore.getState();
-    // Calculate landing tile based on aim direction and power
-    const maxDistance = Math.round(power * 10); // 0-10 tiles based on power (0..1 → 0..10)
+    const hole = store.holes.find((h) => h.id === this.playerCurrentHole);
+    const music = this.musicScene;
+
+    // Play swing SFX
+    try { music.playSfx('swing'); } catch (_) {}
+
+    // PUTTING: If the player is on the green, putt directly to the cup
+    const currentTile = store.grid[this.playerRow][this.playerCol];
+    if (currentTile.type === 'green' && hole?.cup) {
+      const distToCup = Math.abs(this.playerCol - hole.cup.col) + Math.abs(this.playerRow - hole.cup.row);
+      if (distToCup <= 15) {
+        // Putt: ball rolls to cup regardless of power (any reasonable attempt)
+        this.playerCol = hole.cup.col;
+        this.playerRow = hole.cup.row;
+        this.playerStrokes++;
+        this.playerState = 'hole_complete';
+        this.updatePlayerMarker();
+        this.updateChallengeScorecard();
+        try { music.playSfx('cup'); } catch (_) {}
+        this.showTemporaryMessage('🏌️ Putted it in!');
+        this.followPlayer();
+        return;
+      }
+    }
+
+    // REGULAR SHOT: calculate landing with inaccuracy
+    const maxDistance = Math.round(power * 10);
     const dCol = aimCol - this.playerCol;
     const dRow = aimRow - this.playerRow;
     const dist = Math.sqrt(dCol * dCol + dRow * dRow) || 1;
 
-    // Add inaccuracy based on the terrain the player is standing on
-    const currentTile = store.grid[this.playerRow][this.playerCol];
     const effect = TERRAIN_EFFECTS[currentTile.type];
-    // Base accuracy: 1.0 (perfect) scaled by lie quality (0.3-1.0)
-    // Add shot distance factor — longer shots are less accurate
     const accuracy = effect.lieQuality * (1 - maxDistance * 0.03);
-    // Random angle scatter (in radians) — wider spread for lower accuracy
-    const maxScatter = (1 - Math.max(0.1, accuracy)) * 1.5; // up to ~85 degrees for worst shot
+    const maxScatter = (1 - Math.max(0.1, accuracy)) * 1.5;
     const scatterAngle = (Math.random() - 0.5) * 2 * maxScatter;
-    // Random distance modifier (±15% based on lie)
     const distanceMod = effect.distanceModifier * (0.85 + Math.random() * 0.3);
     const effectiveSteps = Math.round(maxDistance * distanceMod);
 
-    // Rotate the direction by the scatter angle
     const cosAngle = Math.cos(scatterAngle);
     const sinAngle = Math.sin(scatterAngle);
     const dirNormX = dCol / dist;
@@ -691,26 +727,33 @@ export class BuilderScene extends Phaser.Scene {
     const steps = Math.min(effectiveSteps, Math.round(dist));
     let landingCol = this.playerCol;
     let landingRow = this.playerRow;
+    let previousCol = this.playerCol;
+    let previousRow = this.playerRow;
+    let hitWater = false;
+    let hitTree = false;
 
     for (let i = 0; i < steps; i++) {
       const nc = Math.round(this.playerCol + scatterDX * (i + 1));
       const nr = Math.round(this.playerRow + scatterDY * (i + 1));
-      // Check bounds
       if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) break;
-      // Check trees
+
       const tile = store.grid[nr][nc];
       if (tile.type === 'trees') {
-        // Deflect — stop just before tree
-        landingCol = nc >= this.playerCol ? nc - 1 : nc + 1;
-        landingRow = nr >= this.playerRow ? nr - 1 : nr + 1;
+        hitTree = true;
+        landingCol = previousCol;
+        landingRow = previousRow;
+        try { music.playSfx('tree'); } catch (_) {}
         break;
       }
       if (tile.type === 'water') {
-        // Splash — stop at this tile but react
+        hitWater = true;
         landingCol = nc;
         landingRow = nr;
+        try { music.playSfx('splash'); } catch (_) {}
         break;
       }
+      previousCol = nc;
+      previousRow = nr;
       landingCol = nc;
       landingRow = nr;
     }
@@ -719,38 +762,69 @@ export class BuilderScene extends Phaser.Scene {
     landingCol = Math.max(0, Math.min(GRID_COLS - 1, landingCol));
     landingRow = Math.max(0, Math.min(GRID_ROWS - 1, landingRow));
 
-    // Create ball entity for flight animation — override with player ball texture
-    const maxArc = store.grid[landingRow][landingCol].type === 'water' || store.grid[landingRow][landingCol].type === 'green' ? 800 : 500;
+    if (hitWater) {
+      // Water hazard: ball drops here, then resets to previous tile with penalty
+      this.playerStrokes++;
+      // Play a quick "splash" visual by landing at water, then reset
+      const waterBall = new Ball(this, this.playerCol, this.playerRow, landingCol, landingRow,
+        this.OFFSET_X, this.OFFSET_Y, 600, () => {});
+      waterBall.sprite.setTexture('ball_player');
+      waterBall.sprite.setDepth(9996);
+      setTimeout(() => {
+        waterBall.removeSprite();
+        this.playerCol = previousCol;
+        this.playerRow = previousRow;
+        this.playerState = 'addressing';
+        this.updatePlayerMarker();
+        this.updateChallengeScorecard();
+        this.showTemporaryMessage('💦 In the water! Penalty stroke.');
+        this.followPlayer();
+      }, 1200);
+      return;
+    }
+
+    if (hitTree) {
+      this.showTemporaryMessage('🌲 Hit the trees!');
+      this.updateChallengeScorecard();
+    }
+
+    // Create ball flight
+    const maxArc = store.grid[landingRow][landingCol].type === 'green' ? 600 : 500;
     this.playerBall = new Ball(
       this, this.playerCol, this.playerRow,
       landingCol, landingRow,
       this.OFFSET_X, this.OFFSET_Y, maxArc,
       () => {
-        // on complete — ball sits at landing
         this.playerCol = landingCol;
         this.playerRow = landingRow;
         this.updatePlayerMarker();
+
+        // Check for landing on the green within putting range
+        const lTile = store.grid[landingRow][landingCol];
+        if (lTile.type === 'green' && hole?.cup) {
+          const dCup = Math.abs(landingCol - hole.cup.col) + Math.abs(landingRow - hole.cup.row);
+          if (dCup <= 3) {
+            // Auto-putt from close range
+            this.playerCol = hole.cup.col;
+            this.playerRow = hole.cup.row;
+            this.playerStrokes++;
+            this.playerState = 'hole_complete';
+            this.updatePlayerMarker();
+            this.updateChallengeScorecard();
+            try { music.playSfx('cup'); } catch (_) {}
+            this.showTemporaryMessage('🏌️ Sunk the putt!');
+            this.followPlayer();
+            return;
+          }
+        }
+        this.playerStrokes++;
+        this.playerState = 'addressing';
+        this.updateChallengeScorecard();
+        this.followPlayer();
       }
     );
-    // Use bright orange player ball texture
     this.playerBall.sprite.setTexture('ball_player');
     this.playerBall.sprite.setScale(1.0);
-
-    // Check for putting
-    const landingTile = store.grid[landingRow][landingCol];
-    const hole = store.holes.find((h) => h.id === this.playerCurrentHole);
-    if (landingTile.type === 'green' && hole?.cup) {
-      const distToCup = Math.abs(landingCol - hole.cup.col) + Math.abs(landingRow - hole.cup.row);
-      if (distToCup <= 3) {
-        // Auto-putt: ball goes to cup
-        this.playerCol = hole.cup.col;
-        this.playerRow = hole.cup.row;
-        this.playerState = 'hole_complete';
-        this.updateChallengeScorecard();
-        return;
-      }
-    }
-
     this.playerState = 'flight';
   }
 
@@ -1082,14 +1156,15 @@ export class BuilderScene extends Phaser.Scene {
           this.powerBar.id = 'challenge-power-bar';
           this.powerBar.style.cssText = `
             position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 105;
-            width: 200px; height: 12px; background: #333; border-radius: 6px;
-            border: 1px solid #e67e22; overflow: hidden;
+            width: 220px; height: 28px; background: #222; border-radius: 6px;
+            border: 1px solid #e67e22; overflow: hidden; text-align: center;
+            font-family: sans-serif; font-size: 12px; color: #fff; line-height: 28px;
           `;
           document.body.appendChild(this.powerBar);
         }
-        this.powerBar.innerHTML = `<div style="height:100%;width:${power * 100}%;background:${
-          power < 0.5 ? '#4caf50' : power < 0.8 ? '#ff9800' : '#f44336'
-        };border-radius:4px;transition:width 0.05s;"></div>`;
+        const pct = Math.round(power * 100);
+        const barColor = power < 0.5 ? '#4caf50' : power < 0.8 ? '#ff9800' : '#f44336';
+        this.powerBar.innerHTML = `<div style="height:100%;width:${power * 100}%;background:${barColor};border-radius:4px;transition:width 0.05s;position:absolute;left:0;top:0;"></div><span style="position:relative;z-index:106;font-weight:bold;">Power: ${pct}%</span>`;
         return;
       }
 
