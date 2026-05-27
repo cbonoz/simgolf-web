@@ -4,4 +4,5 @@ dist
 *.local
 bun.lock
 package-lock.json
+simgolf-web/
 
