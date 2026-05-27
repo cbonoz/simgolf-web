@@ -353,6 +353,10 @@ export class BuilderScene extends Phaser.Scene {
 
     if (this.challengeModeBtn) {
       this.challengeModeBtn.textContent = '⏹️ End Challenge';
+      // Replace all listeners
+      const newBtn = this.challengeModeBtn.cloneNode(true) as HTMLButtonElement;
+      this.challengeModeBtn.parentNode?.replaceChild(newBtn, this.challengeModeBtn);
+      this.challengeModeBtn = newBtn;
       this.challengeModeBtn.addEventListener('click', () => this.endChallenge());
     }
 
@@ -364,6 +368,12 @@ export class BuilderScene extends Phaser.Scene {
     this.challengeMode = false;
     this.challengeActive = false;
     this.playerState = 'complete';
+    // Award minimal prize for early abort (only if they played at least one hole)
+    if (this.playerScorecard.length > 0) {
+      const store = courseStore.getState();
+      store.addMoney(25);
+      this.showTemporaryMessage(`Challenge ended. Participation bonus: +$25`);
+    }
     this.cleanupChallengeUI();
     // Remove the opponent golfer
     if (this.opponentId !== null) {
@@ -486,16 +496,128 @@ export class BuilderScene extends Phaser.Scene {
     }
   }
 
+  private showChallengeResult(): void {
+    const store = courseStore.getState();
+
+    // Compute opponent total
+    const oppTotal = this.opponentScorecard.length > 0
+      ? this.opponentScorecard.reduce((a, b) => a + b, 0)
+      : this.playerTotalStrokes + 999; // opponent DNF — huge win
+
+    // Determine winner
+    const playerWon = this.playerTotalStrokes < oppTotal;
+    const tie = this.playerTotalStrokes === oppTotal;
+
+    // Prize money
+    const basePrize = tie ? 100 : 200;
+    const repMult = store.getReputationMultiplier();
+    const prize = Math.round(basePrize * repMult);
+
+    store.addMoney(prize);
+
+    // Build result overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'challenge-result-overlay';
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8); z-index: 500; display: flex;
+      align-items: center; justify-content: center;
+    `;
+
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      background: #2a2a2a; border: 2px solid ${tie ? '#ff9800' : playerWon ? '#4caf50' : '#e53935'};
+      border-radius: 16px; padding: 32px 40px; max-width: 400px;
+      text-align: center; font-family: sans-serif; color: #fff;
+    `;
+
+    const resultEmoji = tie ? '🤝' : playerWon ? '🏆' : '😔';
+    const resultText = tie ? "It's a Tie!" : playerWon ? 'You Win!' : 'You Lose';
+    const resultColor = tie ? '#ff9800' : playerWon ? '#4caf50' : '#ef5350';
+
+    const title = document.createElement('div');
+    title.style.cssText = `font-size: 36px; margin-bottom: 8px;`;
+    title.textContent = resultEmoji;
+    modal.appendChild(title);
+
+    const resultLabel = document.createElement('div');
+    resultLabel.style.cssText = `font-size: 22px; font-weight: bold; color: ${resultColor}; margin-bottom: 16px;`;
+    resultLabel.textContent = resultText;
+    modal.appendChild(resultLabel);
+
+    const playerScore = document.createElement('div');
+    playerScore.style.cssText = 'font-size: 16px; color: #a8d8a8; margin-bottom: 4px;';
+    playerScore.innerHTML = `🏌️ You: <strong>${this.playerTotalStrokes}</strong> (${this.playerScorecard.map((s, i) => {
+      const h = store.holes.find((hh) => hh.id === i + 1);
+      return `${s}/${h?.par ?? 3}`;
+    }).join(', ')})`;
+    modal.appendChild(playerScore);
+
+    const oppScore = document.createElement('div');
+    oppScore.style.cssText = 'font-size: 16px; color: #64b5f6; margin-bottom: 16px;';
+    oppScore.innerHTML = `🤖 Opponent: <strong>${oppTotal}</strong> (${this.opponentScorecard.map((s, i) => {
+      const h = store.holes.find((hh) => hh.id === i + 1);
+      return `${s}/${h?.par ?? 3}`;
+    }).join(', ')})`;
+    modal.appendChild(oppScore);
+
+    if (!tie) {
+      const diff = Math.abs(this.playerTotalStrokes - oppTotal);
+      const diffText = document.createElement('div');
+      diffText.style.cssText = 'color: #aaa; font-size: 13px; margin-bottom: 16px;';
+      diffText.textContent = playerWon ? `Beat the opponent by ${diff} stroke${diff !== 1 ? 's' : ''}!` : `Lost by ${diff} stroke${diff !== 1 ? 's' : ''}.`;
+      modal.appendChild(diffText);
+    }
+
+    const prizeEl = document.createElement('div');
+    prizeEl.style.cssText = `font-size: 18px; color: ${playerWon || tie ? '#ffd700' : '#888'}; margin-bottom: 20px;`;
+    prizeEl.innerHTML = playerWon || tie ? `💰 Prize: <strong>+$${prize}</strong>` : `💰 No prize this time.`;
+    modal.appendChild(prizeEl);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 12px; justify-content: center;';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = `
+      padding: 10px 24px; border: 2px solid #555; border-radius: 8px;
+      cursor: pointer; font-size: 14px; background: #444; color: #fff; font-weight: bold;
+    `;
+    closeBtn.addEventListener('click', () => {
+      overlay.remove();
+      this.endChallenge();
+    });
+    btnRow.appendChild(closeBtn);
+
+    const playAgainBtn = document.createElement('button');
+    playAgainBtn.textContent = '🔄 Play Again';
+    playAgainBtn.style.cssText = `
+      padding: 10px 24px; border: 2px solid #e67e22; border-radius: 8px;
+      cursor: pointer; font-size: 14px; background: #5a3a1a; color: #f0c27a; font-weight: bold;
+    `;
+    playAgainBtn.addEventListener('click', () => {
+      overlay.remove();
+      this.endChallenge();
+      this.startChallenge();
+    });
+    btnRow.appendChild(playAgainBtn);
+
+    modal.appendChild(btnRow);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Clean up on scene shutdown
+    this.events.once('shutdown', () => overlay.remove());
+  }
+
   private challengeAdvanceHole(): void {
     const store = courseStore.getState();
     const nextHole = store.holes.find((h) => h.id === this.playerCurrentHole + 1);
     if (!nextHole?.tee) {
-      // Round complete
+      // Round complete — show result with prize
       this.challengeActive = false;
       this.playerState = 'complete';
-      this.showTemporaryMessage(`🏆 Round complete! Total: ${this.playerTotalStrokes} strokes`);
-      if (this.challengeModeBtn) this.challengeModeBtn.textContent = '🎮 Play Again';
-      this.endChallenge();
+      this.showChallengeResult();
       return;
     }
     this.playerCurrentHole++;
