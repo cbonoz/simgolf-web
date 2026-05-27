@@ -60,10 +60,11 @@ export interface CourseState {
   dayCount: number; // current day number
   // --- Day tracking ---
   dailyRevenue: number; // greens fees + building revenue + round bonuses today
-  dailyExpenses: number; // building purchases + terrain costs today
+  dailyExpenses: number; // total spending today
+  dailyExpenseBreakdown: Record<string, number>; // per-category breakdown of expenses
   dailyGolfersCompleted: number; // golfers who finished full rounds today
   addRevenue: (amount: number) => void;
-  addExpense: (amount: number) => void;
+  addExpense: (amount: number, category?: string) => void;
   addDailyGolferCompleted: () => void;
   resetDayCounters: () => void;
   // --- End day tracking ---
@@ -82,7 +83,7 @@ export interface CourseState {
   saveCourse: () => void;
   loadCourse: () => boolean;
   addMoney: (amount: number) => void;
-  spendMoney: (amount: number) => boolean;
+  spendMoney: (amount: number, category?: string) => boolean;
   getTile: (col: number, row: number) => Tile;
   resetCourse: () => void;
   serialize: () => string;
@@ -177,6 +178,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   dayCount: 1,
   dailyRevenue: 0,
   dailyExpenses: 0,
+  dailyExpenseBreakdown: {},
   dailyGolfersCompleted: 0,
 
   setTile: (col, row, type) =>
@@ -325,10 +327,17 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
   addMoney: (amount) =>
     set((state) => ({ money: state.money + amount })),
 
-  spendMoney: (amount) => {
+  spendMoney: (amount, category) => {
     const state = get();
     if (state.money < amount) return false;
-    set({ money: state.money - amount });
+    const breakdown = { ...state.dailyExpenseBreakdown };
+    const cat = category || 'terrain';
+    breakdown[cat] = (breakdown[cat] || 0) + amount;
+    set({
+      money: state.money - amount,
+      dailyExpenses: state.dailyExpenses + amount,
+      dailyExpenseBreakdown: breakdown,
+    });
     return true;
   },
 
@@ -352,6 +361,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       dayCount: 1,
       dailyRevenue: 0,
       dailyExpenses: 0,
+      dailyExpenseBreakdown: {},
       dailyGolfersCompleted: 0,
     });
   },
@@ -468,11 +478,17 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       dailyRevenue: state.dailyRevenue + amount,
     })),
 
-  addExpense: (amount) =>
-    set((state) => ({
-      money: state.money - amount,
-      dailyExpenses: state.dailyExpenses + amount,
-    })),
+  addExpense: (amount, category) =>
+    set((state) => {
+      const breakdown = { ...state.dailyExpenseBreakdown };
+      const cat = category || 'other';
+      breakdown[cat] = (breakdown[cat] || 0) + amount;
+      return {
+        money: state.money - amount,
+        dailyExpenses: state.dailyExpenses + amount,
+        dailyExpenseBreakdown: breakdown,
+      };
+    }),
 
   addDailyGolferCompleted: () =>
     set((state) => ({
@@ -483,6 +499,7 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
     set({
       dailyRevenue: 0,
       dailyExpenses: 0,
+      dailyExpenseBreakdown: {},
       dailyGolfersCompleted: 0,
     }),
 

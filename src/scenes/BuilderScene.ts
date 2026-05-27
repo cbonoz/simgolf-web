@@ -1443,7 +1443,7 @@ export class BuilderScene extends Phaser.Scene {
         }
       }
     }
-    if (!store.spendMoney(bt.cost)) {
+    if (!store.spendMoney(bt.cost, 'buildings')) {
       this.showTemporaryMessage(`Not enough money! Need $${bt.cost}.`);
       return;
     }
@@ -1489,7 +1489,7 @@ export class BuilderScene extends Phaser.Scene {
           this.showTemporaryMessage(`Not enough money! Need $${totalCost.toLocaleString()}, have $${store.money.toLocaleString()}`);
           return;
         }
-        if (store.spendMoney(totalCost)) {
+        if (store.spendMoney(totalCost, 'terrain')) {
           store.setTile(col, row, 'trees');
           store.setVegetation(col, row, this.selectedVegetation);
           this.refreshGrid();
@@ -1502,7 +1502,7 @@ export class BuilderScene extends Phaser.Scene {
           this.showTemporaryMessage(`Not enough money! Need $${vegCost.toLocaleString()}, have $${store.money.toLocaleString()}`);
           return;
         }
-        if (store.spendMoney(vegCost)) {
+        if (store.spendMoney(vegCost, 'terrain')) {
           store.setVegetation(col, row, this.selectedVegetation);
           this.refreshGrid();
         }
@@ -1519,7 +1519,7 @@ export class BuilderScene extends Phaser.Scene {
       return;
     }
 
-    if (store.spendMoney(cost)) {
+    if (store.spendMoney(cost, 'terrain')) {
       store.setTile(col, row, this.selectedTerrain);
       this.refreshGrid();
     }
@@ -1538,7 +1538,7 @@ export class BuilderScene extends Phaser.Scene {
     if (!hole.tee) {
       // Place tee — costs fairway terrain price
       const cost = TERRAIN_COST.fairway;
-      if (!store.spendMoney(cost)) {
+      if (!store.spendMoney(cost, 'holes')) {
         this.showTemporaryMessage(`Not enough money! Need $${cost}, have $${store.money}`);
         return;
       }
@@ -1558,7 +1558,7 @@ export class BuilderScene extends Phaser.Scene {
         return;
       }
       const cost = TERRAIN_COST.green;
-      if (!store.spendMoney(cost)) {
+      if (!store.spendMoney(cost, 'holes')) {
         this.showTemporaryMessage(`Not enough money! Need $${cost}, have $${store.money}`);
         return;
       }
@@ -1631,7 +1631,7 @@ export class BuilderScene extends Phaser.Scene {
     confirmBtn.addEventListener('click', () => {
       const store = courseStore.getState();
       const cost = TERRAIN_COST.fairway;
-      if (!store.spendMoney(cost)) {
+      if (!store.spendMoney(cost, 'holes')) {
         this.showTemporaryMessage(`Not enough money! Need $${cost}, have $${store.money}`);
         overlay.remove();
         return;
@@ -1714,6 +1714,32 @@ export class BuilderScene extends Phaser.Scene {
     const store = courseStore.getState();
     const netProfit = store.dailyRevenue - store.dailyExpenses;
 
+    // Build expense breakdown HTML from the categories tracked in the store
+    const breakdown = store.dailyExpenseBreakdown;
+    const categoryLabels: Record<string, string> = {
+      'terrain': 'Terrain Painting',
+      'buildings': 'Building Purchases',
+      'holes': 'Tee & Cup Placement',
+      'other': 'Other',
+    };
+    const categoryIcons: Record<string, string> = {
+      'terrain': '🖌️',
+      'buildings': '🏗️',
+      'holes': '⛳',
+      'other': '📋',
+    };
+    const breakdownLines = Object.entries(breakdown)
+      .sort((a, b) => b[1] - a[1]) // highest first
+      .map(([cat, amt]) => {
+        const label = categoryLabels[cat] || cat;
+        const icon = categoryIcons[cat] || '📋';
+        return `<div style="display: flex; justify-content: space-between; padding: 2px 0 2px 16px; font-size: 12px; color: #bbb;">
+          <span>${icon} ${label}</span>
+          <span style="color: #f87171;">-$${amt}</span>
+        </div>`;
+      })
+      .join('');
+
     const el = document.createElement('div');
     el.id = 'day-transition-modal';
     el.style.cssText = `
@@ -1725,7 +1751,7 @@ export class BuilderScene extends Phaser.Scene {
     const box = document.createElement('div');
     box.style.cssText = `
       background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 12px;
-      padding: 32px 40px; max-width: 420px; width: 90%; text-align: center;
+      padding: 32px 40px; max-width: 480px; width: 90%; text-align: center;
       border: 1px solid #ffd700; color: #fff;
       box-shadow: 0 0 30px rgba(255,215,0,0.15);
     `;
@@ -1748,6 +1774,7 @@ export class BuilderScene extends Phaser.Scene {
           <span style="color: #aaa;">🏗️ Expenses</span>
           <span style="color: #f87171; font-weight: bold;">-$${store.dailyExpenses}</span>
         </div>
+        ${Object.keys(breakdown).length > 0 ? breakdownLines : ''}
         <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 16px;">
           <span style="color: #ffd700;">📊 Net Profit</span>
           <span style="font-weight: bold; color: ${netProfit >= 0 ? '#4ade80' : '#f87171'};">
