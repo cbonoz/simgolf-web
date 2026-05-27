@@ -463,14 +463,35 @@ export class BuilderScene extends Phaser.Scene {
     const dCol = aimCol - this.playerCol;
     const dRow = aimRow - this.playerRow;
     const dist = Math.sqrt(dCol * dCol + dRow * dRow) || 1;
-    const steps = Math.min(maxDistance, Math.round(dist));
+
+    // Add inaccuracy based on the terrain the player is standing on
+    const currentTile = store.grid[this.playerRow][this.playerCol];
+    const effect = TERRAIN_EFFECTS[currentTile.type];
+    // Base accuracy: 1.0 (perfect) scaled by lie quality (0.3-1.0)
+    // Add shot distance factor — longer shots are less accurate
+    const accuracy = effect.lieQuality * (1 - maxDistance * 0.03);
+    // Random angle scatter (in radians) — wider spread for lower accuracy
+    const maxScatter = (1 - Math.max(0.1, accuracy)) * 1.5; // up to ~85 degrees for worst shot
+    const scatterAngle = (Math.random() - 0.5) * 2 * maxScatter;
+    // Random distance modifier (±15% based on lie)
+    const distanceMod = effect.distanceModifier * (0.85 + Math.random() * 0.3);
+    const effectiveSteps = Math.round(maxDistance * distanceMod);
+
+    // Rotate the direction by the scatter angle
+    const cosAngle = Math.cos(scatterAngle);
+    const sinAngle = Math.sin(scatterAngle);
+    const dirNormX = dCol / dist;
+    const dirNormY = dRow / dist;
+    const scatterDX = dirNormX * cosAngle - dirNormY * sinAngle;
+    const scatterDY = dirNormX * sinAngle + dirNormY * cosAngle;
+
+    const steps = Math.min(effectiveSteps, Math.round(dist));
     let landingCol = this.playerCol;
     let landingRow = this.playerRow;
 
     for (let i = 0; i < steps; i++) {
-      const progress = (i + 1) / steps;
-      const nc = Math.round(this.playerCol + dCol / dist * steps * progress);
-      const nr = Math.round(this.playerRow + dRow / dist * steps * progress);
+      const nc = Math.round(this.playerCol + scatterDX * (i + 1));
+      const nr = Math.round(this.playerRow + scatterDY * (i + 1));
       // Check bounds
       if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) break;
       // Check trees
