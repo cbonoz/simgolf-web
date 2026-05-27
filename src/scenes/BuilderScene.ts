@@ -1783,39 +1783,40 @@ export class BuilderScene extends Phaser.Scene {
     const tooltip = document.createElement('div');
     tooltip.id = 'golfer-tooltip';
     tooltip.style.cssText = `
-      position: fixed; z-index: 200; background: rgba(0,0,0,0.9); border-radius: 8px;
-      padding: 10px 14px; color: #fff; font-family: sans-serif; font-size: 12px;
-      max-width: 240px; pointer-events: none; line-height: 1.5;
-      border: 1px solid #555;
+      position: fixed; z-index: 200; background: rgba(0,0,0,0.95); border-radius: 10px;
+      padding: 14px 18px; color: #fff; font-family: sans-serif; font-size: 14px;
+      width: 260px; pointer-events: none; line-height: 1.6;
+      border: 1px solid #ffcc80;
+      top: 10px; left: 50%; transform: translateX(-50%);
     `;
 
     const name = document.createElement('div');
     name.textContent = golfer.name;
-    name.style.cssText = 'font-weight: bold; color: #ffcc80; margin-bottom: 2px;';
+    name.style.cssText = 'font-weight: bold; color: #ffcc80; font-size: 18px; margin-bottom: 4px;';
     tooltip.appendChild(name);
 
     // Trait line
     const traitEl = document.createElement('div');
-    traitEl.style.cssText = 'color: #aaa; font-size: 11px; margin-bottom: 4px;';
+    traitEl.style.cssText = 'color: #ddd; font-size: 13px; margin-bottom: 4px;';
     traitEl.textContent = `${golfer.trait.emoji} ${golfer.trait.name} — ${golfer.trait.description}`;
     tooltip.appendChild(traitEl);
 
     // Skills
     const skillsEl = document.createElement('div');
-    skillsEl.style.cssText = 'display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 4px;';
+    skillsEl.style.cssText = 'display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px;';
     for (const skill of golfer.skills) {
       const badge = document.createElement('span');
       badge.textContent = `${skill.emoji}${skill.name}`;
       badge.style.cssText = `
-        background: #2a4a2a; color: #a8d8a8; padding: 1px 6px; border-radius: 8px;
-        font-size: 10px; border: 1px solid #3a6a3a;
+        background: #2a4a2a; color: #a8d8a8; padding: 2px 8px; border-radius: 8px;
+        font-size: 12px; border: 1px solid #3a6a3a;
       `;
       skillsEl.appendChild(badge);
     }
     tooltip.appendChild(skillsEl);
 
     const stats = document.createElement('div');
-    stats.style.cssText = 'color: #ccc; font-size: 11px;';
+    stats.style.cssText = 'color: #ccc; font-size: 13px;';
     stats.innerHTML = `
       Skill: ${Math.round(golfer.skill * 100)}% | Hole ${golfer.currentHole}<br>
       Strokes: ${golfer.strokes} | Total: ${golfer.totalStrokes}
@@ -1824,25 +1825,12 @@ export class BuilderScene extends Phaser.Scene {
 
     const thoughtEl = document.createElement('div');
     thoughtEl.textContent = `💭 "${thought}"`;
-    thoughtEl.style.cssText = 'color: #a8d8a8; font-style: italic; margin-top: 6px; font-size: 11px;';
+    thoughtEl.style.cssText = 'color: #a8d8a8; font-style: italic; margin-top: 8px; font-size: 13px;';
     tooltip.appendChild(thoughtEl);
-
-    // Position near the golfer sprite
-    const sprite = this.golferSprites.get(golfer.id);
-    if (sprite) {
-      const matrix = sprite.getWorldTransformMatrix();
-      tooltip.style.left = `${matrix.tx + 20}px`;
-      tooltip.style.top = `${matrix.ty - 40}px`;
-    } else {
-      tooltip.style.left = '50%';
-      tooltip.style.top = '50%';
-      tooltip.style.transform = 'translate(-50%, -50%)';
-    }
 
     document.body.appendChild(tooltip);
     this.golferTooltip = tooltip;
 
-    // Auto-hide after 3 seconds
     setTimeout(() => this.hideGolferTooltip(), 3000);
   }
 
