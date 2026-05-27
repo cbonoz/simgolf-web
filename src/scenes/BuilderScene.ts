@@ -337,89 +337,47 @@ export class BuilderScene extends Phaser.Scene {
 
   /** Draw slope wall graphics between tiles of different heights */
   private addSlopeWalls(col: number, row: number, pos: { x: number; y: number }, height: number, grid: Tile[][]): void {
+    if (height === 0) return;
     const HEIGHT_SCALE = 4;
-    // Only draw walls for the LOWER tile in a pair (processed from low height to high)
-    // Check 4 cardinal neighbors
-    const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-    for (const [dc, dr] of dirs) {
-      const nc = col + dc;
-      const nr = row + dr;
-      if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
-      const nh = grid[nr][nc].height;
-      if (nh <= height) continue; // Only draw when THIS tile is lower than neighbor
+    const wallH = height * HEIGHT_SCALE; // could be negative
 
-      const diff = nh - height; // positive
-      const wallH = diff * HEIGHT_SCALE;
+    // Draw the visible face from this tile's bottom edge downward
+    // This fills the gap between the raised tile and the tiles/ground below
+    const g = this.add.graphics();
+    // Draw behind this tile but in front of tiles below
+    g.setDepth((col + row) * GRID_COLS + col - 0.5);
 
-      const g = this.add.graphics();
-      // Depth between current tile and neighbor
-      g.setDepth((col + row) * GRID_COLS + col + 0.1);
+    // Dark dirt brown — darker for taller heights
+    const shade = Math.min(30 + height * 12, 90);
+    const wallColor = Phaser.Display.Color.GetColor(shade + 40, shade + 10, shade - 20);
+    g.fillStyle(wallColor, 1);
 
-      // Dirt/brown color based on height difference (lighter = more visible)
-      const shade = Math.min(0x33 + diff * 8, 0x55);
-      const wallColor = Phaser.Display.Color.GetColor(shade + 0x33, shade, shade - 0x11);
-      g.fillStyle(wallColor, 1);
+    const cx = pos.x;
+    const cy = pos.y;
+    const hw = TILE_WIDTH / 2;
+    const hh = TILE_HEIGHT / 2;
 
-      // Draw an isometric parallelogram face between the two tiles
-      // The wall face is the vertical face connecting the shared edge of
-      // this tile (lower) and the neighbor (higher).
-      const cx = pos.x;
-      const cy = pos.y;
-      const hw = TILE_WIDTH / 2;
-      const hh = TILE_HEIGHT / 2;
+    // Draw the full extruded diamond: the 4 bottom-edge-to-ground faces
+    // Each face is a parallelogram: the diamond edge downward by wallH
+    const edges: [number, number, number, number][] = [
+      // left → top, top → right, right → bottom, bottom → left
+      [cx - hw, cy, cx, cy - hh],
+      [cx, cy - hh, cx + hw, cy],
+      [cx + hw, cy, cx, cy + hh],
+      [cx, cy + hh, cx - hw, cy],
+    ];
 
-      // The 4 vertices of this tile's diamond:
-      // top = (cx, cy - hh)
-      // right = (cx + hw, cy)
-      // bottom = (cx, cy + hh)
-      // left = (cx - hw, cy)
-
-      if (dc === 0) {
-        // Vertical neighbor (row change)
-        // Top neighbor (row-1): shared edge is left → top
-        // Bottom neighbor (row+1): shared edge is right → bottom
-        let ax: number, ay: number, bx: number, by: number;
-        if (dr < 0) {
-          // Row-1 (above): edge from left(cx - hw, cy) to top(cx, cy - hh)
-          ax = cx - hw; ay = cy;
-          bx = cx; by = cy - hh;
-        } else {
-          // Row+1 (below): edge from right(cx + hw, cy) to bottom(cx, cy + hh)
-          ax = cx + hw; ay = cy;
-          bx = cx; by = cy + hh;
-        }
-        g.beginPath();
-        g.moveTo(ax, ay);
-        g.lineTo(bx, by);
-        g.lineTo(bx, by - wallH);
-        g.lineTo(ax, ay - wallH);
-        g.closePath();
-        g.fillPath();
-      } else {
-        // Horizontal neighbor (col change)
-        // Left neighbor (col-1): shared edge is top → left
-        // Right neighbor (col+1): shared edge is bottom → right
-        let ax: number, ay: number, bx: number, by: number;
-        if (dc < 0) {
-          // Col-1 (left): edge from top(cx, cy - hh) to left(cx - hw, cy)
-          ax = cx; ay = cy - hh;
-          bx = cx - hw; by = cy;
-        } else {
-          // Col+1 (right): edge from bottom(cx, cy + hh) to right(cx + hw, cy)
-          ax = cx; ay = cy + hh;
-          bx = cx + hw; by = cy;
-        }
-        g.beginPath();
-        g.moveTo(ax, ay);
-        g.lineTo(bx, by);
-        g.lineTo(bx, by - wallH);
-        g.lineTo(ax, ay - wallH);
-        g.closePath();
-        g.fillPath();
-      }
-
-      this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
+    for (const [ax, ay, bx, by] of edges) {
+      g.beginPath();
+      g.moveTo(ax, ay);
+      g.lineTo(bx, by);
+      g.lineTo(bx, by + wallH);
+      g.lineTo(ax, ay + wallH);
+      g.closePath();
+      g.fillPath();
     }
+
+    this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
   }
 
   // === BUILDING RENDERING ===
@@ -936,7 +894,7 @@ export class BuilderScene extends Phaser.Scene {
     noneBtn.textContent = '✕';
     noneBtn.title = 'Deselect tool (Esc)';
     const heightBtn = document.createElement('button');
-    heightBtn.textContent = '⛰️ Height';
+    heightBtn.textContent = '⛰️ Hgt';
     heightBtn.title = 'Raise/lower terrain';
     this.modeButtons = [paintBtn, holeBtn, heightBtn, noneBtn];
 
