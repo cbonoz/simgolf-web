@@ -361,43 +361,59 @@ export class BuilderScene extends Phaser.Scene {
       g.fillStyle(wallColor, 1);
 
       // Draw an isometric parallelogram face between the two tiles
-      // The wall face spans the tile edge perpendicular to the direction
+      // The wall face is the vertical face connecting the shared edge of
+      // this tile (lower) and the neighbor (higher).
       const cx = pos.x;
       const cy = pos.y;
       const hw = TILE_WIDTH / 2;
       const hh = TILE_HEIGHT / 2;
 
-      if (dc === 0) {
-        // Vertical neighbor (row change) — wall along top or bottom edge
-        // This edge runs diagonally: from left-bottom to right-top
-        const sign = dr < 0 ? -1 : 1; // -1 = top neighbor, 1 = bottom neighbor
-        // The edge is an isometric line: offset by hw horizontal, hh vertical
-        const leftX = cx - hw;
-        const leftY = cy + sign * hh;
-        const rightX = cx + hw;
-        const rightY = cy - sign * hh;
+      // The 4 vertices of this tile's diamond:
+      // top = (cx, cy - hh)
+      // right = (cx + hw, cy)
+      // bottom = (cx, cy + hh)
+      // left = (cx - hw, cy)
 
+      if (dc === 0) {
+        // Vertical neighbor (row change)
+        // Top neighbor (row-1): shared edge is left → top
+        // Bottom neighbor (row+1): shared edge is right → bottom
+        let ax: number, ay: number, bx: number, by: number;
+        if (dr < 0) {
+          // Row-1 (above): edge from left(cx - hw, cy) to top(cx, cy - hh)
+          ax = cx - hw; ay = cy;
+          bx = cx; by = cy - hh;
+        } else {
+          // Row+1 (below): edge from right(cx + hw, cy) to bottom(cx, cy + hh)
+          ax = cx + hw; ay = cy;
+          bx = cx; by = cy + hh;
+        }
         g.beginPath();
-        g.moveTo(leftX, leftY);
-        g.lineTo(rightX, rightY);
-        g.lineTo(rightX, rightY - wallH);
-        g.lineTo(leftX, leftY - wallH);
+        g.moveTo(ax, ay);
+        g.lineTo(bx, by);
+        g.lineTo(bx, by - wallH);
+        g.lineTo(ax, ay - wallH);
         g.closePath();
         g.fillPath();
       } else {
-        // Horizontal neighbor (col change) — wall along left or right edge
-        const sign = dc < 0 ? -1 : 1; // -1 = left neighbor, 1 = right neighbor
-        // The edge runs diagonally: from top to bottom
-        const topX = cx - sign * hw;
-        const topY = cy - hh;
-        const botX = cx + sign * hw;
-        const botY = cy + hh;
-
+        // Horizontal neighbor (col change)
+        // Left neighbor (col-1): shared edge is top → left
+        // Right neighbor (col+1): shared edge is bottom → right
+        let ax: number, ay: number, bx: number, by: number;
+        if (dc < 0) {
+          // Col-1 (left): edge from top(cx, cy - hh) to left(cx - hw, cy)
+          ax = cx; ay = cy - hh;
+          bx = cx - hw; by = cy;
+        } else {
+          // Col+1 (right): edge from bottom(cx, cy + hh) to right(cx + hw, cy)
+          ax = cx; ay = cy + hh;
+          bx = cx + hw; by = cy;
+        }
         g.beginPath();
-        g.moveTo(topX, topY);
-        g.lineTo(botX, botY);
-        g.lineTo(botX, botY - wallH);
-        g.lineTo(topX, topY - wallH);
+        g.moveTo(ax, ay);
+        g.lineTo(bx, by);
+        g.lineTo(bx, by - wallH);
+        g.lineTo(ax, ay - wallH);
         g.closePath();
         g.fillPath();
       }
