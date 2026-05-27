@@ -520,12 +520,16 @@ export class BuilderScene extends Phaser.Scene {
     if (this.playerState === 'flight' && this.playerBall) {
       this.playerBall.update(delta);
       if (this.playerBall.complete) {
-        // Ball landed
         this.playerBall = null;
-        this.playerStrokes++;
-        this.playerState = 'addressing';
+        // onComplete callback in executeChallengeSwing has already set
+        // playerStrokes and playerState. Just update UI.
+        // Check if still in flight (meaning state didn't change to hole_complete)
+        if ((this as any).playerState === 'flight') {
+          // Regular landing — ball reached its target
+          this.updateChallengeScorecard();
+        }
+        // If state is hole_complete (putt/auto-putt), let the next frame handle it
         this.playerWalkTarget = null;
-        this.updateChallengeScorecard();
       }
       return;
     }
