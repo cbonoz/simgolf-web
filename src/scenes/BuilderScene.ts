@@ -25,6 +25,7 @@ export class BuilderScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private terrainPalette!: HTMLDivElement;
   private moneyDisplay!: HTMLDivElement;
+  private revenueIndicatorEl!: HTMLDivElement;
   private helpText!: HTMLDivElement;
 
   // Height mode: raise (+1) or lower (-1)
@@ -305,7 +306,16 @@ export class BuilderScene extends Phaser.Scene {
     }
     if (totalRevenue > 0) {
       store.addMoney(totalRevenue);
-      this.showTemporaryMessage(`🏪 Revenue: +$${totalRevenue}`);
+      // Show discrete revenue indicator near the money display
+      if (this.revenueIndicatorEl) {
+        this.revenueIndicatorEl.textContent = `🏪 +$${totalRevenue}`;
+        this.revenueIndicatorEl.style.opacity = '1';
+        // Fade out after 2.5s
+        setTimeout(() => {
+          this.revenueIndicatorEl.style.opacity = '0';
+        }, 2500);
+      }
+      this.updateMoneyDisplay();
     }
   }
 
@@ -2004,8 +2014,21 @@ export class BuilderScene extends Phaser.Scene {
     `;
     this.updateMoneyDisplay();
 
+    // Revenue indicator (discrete, sits below money display)
+    this.revenueIndicatorEl = document.createElement('div');
+    this.revenueIndicatorEl.id = 'revenue-indicator';
+    this.revenueIndicatorEl.style.cssText = `
+      position: fixed; top: 60px; right: 10px; z-index: 99;
+      background: rgba(0,0,0,0.7); border-radius: 4px; padding: 3px 10px;
+      color: #4caf50; font-family: sans-serif; font-size: 11px;
+      opacity: 0; transition: opacity 0.5s ease;
+      pointer-events: none;
+    `;
+    this.revenueIndicatorEl.textContent = '';
+
     document.body.appendChild(this.terrainPalette);
     document.body.appendChild(this.moneyDisplay);
+    document.body.appendChild(this.revenueIndicatorEl);
     document.body.appendChild(this.helpText);
   }
 
@@ -3379,6 +3402,7 @@ export class BuilderScene extends Phaser.Scene {
     document.getElementById('golfer-panel')?.remove();
     document.getElementById('music-player')?.remove();
     this.moneyDisplay?.remove();
+    this.revenueIndicatorEl?.remove();
     this.helpText?.remove();
     document.querySelectorAll('.builder-toast').forEach((el) => el.remove());
     document.removeEventListener('keydown', this.keydownHandler);
