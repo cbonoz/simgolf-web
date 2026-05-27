@@ -159,20 +159,21 @@ export class TitleScene extends Phaser.Scene {
       green: 0x4ab84a,
     };
 
-    // Scatter tiles in the background, clipped to screen area
-    // We'll place them with isometric spacing but dimmed (alpha 0.15-0.25)
-    const spacingX = tileW * 0.8;
-    const spacingY = tileH * 0.6;
+    // Place tiles in a diamond pattern across the full screen
+    const spacingX = tileW * 0.7;
+    const spacingY = tileH * 0.4;
+    const cols = Math.ceil(w / spacingX) + 4;
+    const rows = Math.ceil(h / spacingY) + 4;
+    const originX = -spacingX;
+    const originY = -spacingY;
 
-    for (let row = -2; row < Math.ceil(h / spacingY) + 2; row++) {
-      for (let col = -2; col < Math.ceil(w / spacingX) + 2; col++) {
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
         const type = terrainTypes[Math.floor(Math.random() * terrainTypes.length)];
         const color = terrainColors[type];
-        const isoX = (col - row) * (tileW / 2) + w / 2;
-        const isoY = (col + row) * (tileH / 2) + h * 0.35;
-
-        // Skip if off screen
-        if (isoX < -tileW || isoX > w + tileW || isoY < -tileH || isoY > h + tileH) continue;
+        // Isometric projection for background tiles
+        const isoX = originX + (col - row) * (tileW / 2) + w / 2;
+        const isoY = originY + (col + row) * (tileH / 2) + h * 0.35;
 
         const g = this.add.graphics();
         g.fillStyle(color, 0.12 + Math.random() * 0.1);
