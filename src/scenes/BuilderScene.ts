@@ -344,27 +344,37 @@ export class BuilderScene extends Phaser.Scene {
     const hh = TILE_HEIGHT / 2;
 
     if (height > 0) {
-      // RAISED TILE: draw a full column downward from this tile's bottom edge
-      // This fills the gap between the raised tile surface and the ground.
+      // RAISED TILE: draw column faces only on edges where neighbor is LOWER
+      // This creates continuous terrain blocks instead of separate columns.
       const wallH = height * HEIGHT_SCALE;
-      const g = this.add.graphics();
-      g.setDepth((col + row) * GRID_COLS + col - 0.5);
       const shade = Math.min(30 + height * 12, 90);
-      g.fillStyle(Phaser.Display.Color.GetColor(shade + 40, shade + 10, shade - 20), 1);
+      const colColor = Phaser.Display.Color.GetColor(shade + 40, shade + 10, shade - 20);
 
-      const edges: [number, number, number, number][] = [
-        [cx - hw, cy, cx, cy - hh],
-        [cx, cy - hh, cx + hw, cy],
-        [cx + hw, cy, cx, cy + hh],
-        [cx, cy + hh, cx - hw, cy],
+      // Check all 4 neighbors — only draw face where neighbor is lower
+      const dirEdges: [number, number, number, number, number, number][] = [
+        // [dc, dr, ax, ay, bx, by] — edge vertices (from this tile's perspective)
+        [0, -1, cx - hw, cy, cx, cy - hh],        // top neighbor: edge = left → top
+        [0, 1, cx + hw, cy, cx, cy + hh],          // bottom neighbor: edge = right → bottom
+        [-1, 0, cx, cy - hh, cx - hw, cy],          // left neighbor: edge = top → left
+        [1, 0, cx, cy + hh, cx + hw, cy],           // right neighbor: edge = bottom → right
       ];
-      for (const [ax, ay, bx, by] of edges) {
+
+      for (const [dc, dr, ax, ay, bx, by] of dirEdges) {
+        const nc = col + dc;
+        const nr = row + dr;
+        // Skip if off grid or neighbor is same height or higher
+        if (nc >= 0 && nc < GRID_COLS && nr >= 0 && nr < GRID_ROWS &&
+            grid[nr][nc].height >= height) continue;
+
+        const g = this.add.graphics();
+        g.setDepth((col + row) * GRID_COLS + col - 0.5);
+        g.fillStyle(colColor, 1);
         g.beginPath();
         g.moveTo(ax, ay); g.lineTo(bx, by);
         g.lineTo(bx, by + wallH); g.lineTo(ax, ay + wallH);
         g.closePath(); g.fillPath();
+        this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
       }
-      this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
     }
 
     // LOWER TILE ADJACENT TO HIGHER TILE: draw upward faces on edges
