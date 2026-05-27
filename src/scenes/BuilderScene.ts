@@ -682,24 +682,43 @@ export class BuilderScene extends Phaser.Scene {
     const hole = store.holes.find((h) => h.id === this.playerCurrentHole);
     const music = this.musicScene;
 
+    // Clean up previous ball sprite to prevent accumulating orange balls
+    if (this.playerBall) {
+      this.playerBall.removeSprite();
+      this.playerBall = null;
+    }
+
     // Play swing SFX
     try { music.playSfx('swing'); } catch (_) {}
 
-    // PUTTING: If the player is on the green, putt directly to the cup
+    // PUTTING: If the player is on the green, show a rolling animation to the cup
     const currentTile = store.grid[this.playerRow][this.playerCol];
     if (currentTile.type === 'green' && hole?.cup) {
       const distToCup = Math.abs(this.playerCol - hole.cup.col) + Math.abs(this.playerRow - hole.cup.row);
       if (distToCup <= 15) {
-        // Putt: ball rolls to cup regardless of power (any reasonable attempt)
-        this.playerCol = hole.cup.col;
-        this.playerRow = hole.cup.row;
-        this.playerStrokes++;
-        this.playerState = 'hole_complete';
-        this.updatePlayerMarker();
-        this.updateChallengeScorecard();
-        try { music.playSfx('cup'); } catch (_) {}
-        this.showTemporaryMessage('🏌️ Putted it in!');
-        this.followPlayer();
+        // Putt: animate ball rolling along the ground to the cup
+        this.playerState = 'flight';
+        const puttBall = new Ball(
+          this, this.playerCol, this.playerRow,
+          hole.cup.col, hole.cup.row,
+          this.OFFSET_X, this.OFFSET_Y, 300,
+          () => {
+            this.playerCol = hole.cup.col;
+            this.playerRow = hole.cup.row;
+            this.playerStrokes++;
+            this.playerState = 'hole_complete';
+            this.updatePlayerMarker();
+            this.updateChallengeScorecard();
+            try { music.playSfx('cup'); } catch (_) {}
+            this.showTemporaryMessage('🏌️ Putted it in!');
+            this.followPlayer();
+            // Clean up the putt ball sprite
+            puttBall.removeSprite();
+          }
+        );
+        puttBall.sprite.setTexture('ball_player');
+        puttBall.sprite.setScale(0.9);
+        this.playerBall = puttBall;
         return;
       }
     }
