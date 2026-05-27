@@ -656,6 +656,15 @@ export class BuilderScene extends Phaser.Scene {
       ? this.opponentScorecard.reduce((a, b) => a + b, 0)
       : this.playerTotalStrokes + 999; // opponent DNF — huge win
 
+    // Don't show results if opponent hasn't recorded any scores yet (still playing)
+    // This prevents showing "You Win!" when the opponent hasn't had a chance to play
+    if (this.opponentScorecard.length === 0) {
+      this.showTemporaryMessage('⏳ Waiting for the opponent to finish the hole...');
+      this.playerState = 'waiting';
+      // Advance to next frame — the opponent will eventually finish via AI
+      return;
+    }
+
     // Determine winner
     const playerWon = this.playerTotalStrokes < oppTotal;
     const tie = this.playerTotalStrokes === oppTotal;
@@ -806,9 +815,9 @@ export class BuilderScene extends Phaser.Scene {
     // Play swing SFX
     try { music.playSfx('swing'); } catch (_) {}
 
-    // PUTTING: If the player is on the green, putt to the cup
+    // PUTTING: If the player is on the green (and not on the tee), putt to the cup
     const currentTile = store.grid[this.playerRow][this.playerCol];
-    if (currentTile.type === 'green' && hole?.cup) {
+    if (currentTile.type === 'green' && hole?.cup && this.playerStrokes > 0) {
       // Putt: teleport ball to cup for reliability, show visual feedback
       this.playerCol = hole.cup.col;
       this.playerRow = hole.cup.row;
