@@ -7,6 +7,7 @@ export interface Tile {
   isTee: boolean;
   isCup: boolean;
   vegetation: string | null; // sprite key for vegetation overlay
+  height: number; // -10 to +10 elevation
 }
 
 export interface PlacedBuilding {
@@ -35,6 +36,8 @@ export interface CourseState {
   courseRecordPar: number | null; // total course par when record was set
   completedScores: number[]; // total strokes from all completed rounds
   setTile: (col: number, row: number, type: TerrainType) => void;
+  setTileHeight: (col: number, row: number, height: number) => void;
+  adjustHeight: (col: number, row: number, delta: number) => void;
   setVegetation: (col: number, row: number, vegetation: string | null) => void;
   setTee: (holeId: number, col: number, row: number) => void;
   setCup: (holeId: number, col: number, row: number) => void;
@@ -88,6 +91,7 @@ function createEmptyGrid(): Tile[][] {
         isTee: false,
         isCup: false,
         vegetation: null,
+        height: 0,
       };
     }
   }
@@ -143,6 +147,23 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
         tile.vegetation = null;
       }
       grid[row][col] = tile;
+      return { grid };
+    }),
+
+  setTileHeight: (col, row, height) =>
+    set((state) => {
+      const grid = state.grid.map((r) => [...r]);
+      const clamped = Math.max(-10, Math.min(10, height));
+      grid[row][col] = { ...grid[row][col], height: clamped };
+      return { grid };
+    }),
+
+  adjustHeight: (col, row, delta) =>
+    set((state) => {
+      const grid = state.grid.map((r) => [...r]);
+      const current = grid[row][col].height;
+      const clamped = Math.max(-10, Math.min(10, current + delta));
+      grid[row][col] = { ...grid[row][col], height: clamped };
       return { grid };
     }),
 

@@ -27,8 +27,11 @@ export class BuilderScene extends Phaser.Scene {
   private moneyDisplay!: HTMLDivElement;
   private helpText!: HTMLDivElement;
 
+  // Height mode: raise (+1) or lower (-1)
+  private heightMode: 'raise' | 'lower' | null = null;
+
   // Hole mode
-  private builderMode: 'paint' | 'hole' | 'none' = 'paint';
+  private builderMode: 'paint' | 'hole' | 'height' | 'none' = 'paint';
   private selectedHoleId: number = 1;
   private teeSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private flagSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
@@ -41,7 +44,8 @@ export class BuilderScene extends Phaser.Scene {
   private holeStatusDisplay!: HTMLDivElement;
   private terrainButtonsContainer!: HTMLDivElement;
   private holeControlsContainer!: HTMLDivElement;
-
+  private heightControlsContainer!: HTMLDivElement;
+  private modeButtons!: HTMLButtonElement[];
   // Golfers (unified build+play)
   private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
   private activeBalls: Map<number, Ball> = new Map();
@@ -90,6 +94,9 @@ export class BuilderScene extends Phaser.Scene {
 
   // Landing ball markers (persistent sprites at landing positions)
   private landingBallSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
+
+  // Elevation slope wall sprites
+  private slopeTileSprites: Phaser.GameObjects.Sprite[] = [];
 
   // Building sprites
   private buildingSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
@@ -257,6 +264,8 @@ export class BuilderScene extends Phaser.Scene {
       this.helpText.textContent = 'Left-click: Paint | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     } else if (this.builderMode === 'hole') {
       this.helpText.textContent = 'Left-click: Place tee/cup | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
+    } else if (this.builderMode === 'height') {
+      this.helpText.textContent = 'Left-click: Raise/Lower tile | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo | Esc: Resume';
     } else {
       this.helpText.textContent = 'Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo | Esc: Resume';
     }
@@ -265,16 +274,23 @@ export class BuilderScene extends Phaser.Scene {
   private createGrid(): void {
     const store = courseStore.getState();
     this.tileSprites = [];
+    // Height scale: 1 unit = 4 pixels of Y offset
+    const HEIGHT_SCALE = 4;
 
     for (let row = 0; row < GRID_ROWS; row++) {
       this.tileSprites[row] = [];
       for (let col = 0; col < GRID_COLS; col++) {
-        const pos = this.tileToWorld(col, row);
+        const basePos = this.tileToWorld(col, row);
         const tile = store.grid[row][col];
+        const heightOffset = tile.height * HEIGHT_SCALE;
+        const pos = { x: basePos.x, y: basePos.y - heightOffset };
         const sprite = this.add.sprite(pos.x, pos.y, `tile_${tile.type}`);
         sprite.setOrigin(0.5, 0.5);
-        sprite.setDepth((col + row) * GRID_COLS + col);
+        sprite.setDepth((col + row) * GRID_COLS + col + tile.height * 2);
         this.tileSprites[row][col] = sprite;
+
+        // Draw slope walls if this tile is higher or lower than neighbors
+        this.addSlopeWalls(col, row, pos, tile.height, store.grid);
 
         if (tile.vegetation) {
           this.addVegetationOverlay(col, row, pos, tile.vegetation);
@@ -304,10 +320,65 @@ export class BuilderScene extends Phaser.Scene {
 
   private removeVegetationOverlay(col: number, row: number): void {
     const key = `${col},${row}`;
-    const plant = this.vegetationOverlaySprites.get(key);
-    if (plant) {
-      plant.destroy();
+    const sprite = this.vegetationOverlaySprites.get(key);
+    if (sprite) {
+      sprite.destroy();
       this.vegetationOverlaySprites.delete(key);
+    }
+  }
+
+  /**
+   * Helper: convert tile coords to world position accounting for elevation.
+   */
+  private tileWorldWithHeight(col: number, row: number, height: number): { x: number; y: number } {
+    const base = this.tileToWorld(col, row);
+    return { x: base.x, y: base.y - height * 4 };
+  }
+
+  /** Draw slope wall graphics between tiles of different heights */
+  private addSlopeWalls(col: number, row: number, pos: { x: number; y: number }, height: number, grid: Tile[][]): void {
+    const HEIGHT_SCALE = 4;
+    // Check 4 cardinal neighbors
+    const dirs: [number, number, string][] = [[0, -1, 'top'], [0, 1, 'bottom'], [-1, 0, 'left'], [1, 0, 'right']];
+    for (const [dc, dr] of dirs) {
+      const nc = col + dc;
+      const nr = row + dr;
+      if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
+      const neighborHeight = grid[nr][nc].height;
+      if (neighborHeight === height) continue;
+
+      const diff = height - neighborHeight;
+      // Draw a wall on the face between this tile and the neighbor
+      const tcx = pos.x;
+      const tcy = pos.y + HEIGHT_SCALE * Math.max(0, -diff) / 2; // adjust to meet at midpoint
+      const wallHeight = Math.abs(diff) * HEIGHT_SCALE;
+      const wallDepth = Math.abs(diff) * 2;
+      const hw = TILE_WIDTH / 2;
+      const hh = TILE_HEIGHT / 2;
+
+      const g = this.add.graphics();
+      g.setDepth((col + row) * GRID_COLS + col + 0.1);
+
+      // Color based on height difference severity
+      const r = 100 - Math.abs(diff) * 5;
+      const gVal = 80 - Math.abs(diff) * 4;
+      const b = 50;
+      g.fillStyle(Phaser.Display.Color.GetColor(r, gVal, b), 1);
+
+      // Draw the side wall as a polygon
+      if (dc === 0) {
+        // Vertical neighbor (row change) — wall along top or bottom
+        const wid = TILE_WIDTH * 0.4;
+        const sign = dr < 0 ? -1 : 1;
+        g.fillRect(tcx - wid / 2, tcy - (sign < 0 ? wallHeight : 0), wid, wallHeight);
+      } else {
+        // Horizontal neighbor (col change) — wall along side
+        const wid = TILE_HEIGHT * 0.4;
+        const sign = dc < 0 ? -1 : 1;
+        g.fillRect(tcx - (sign < 0 ? wallDepth : 0), tcy - wid / 2, wallDepth, wid);
+      }
+
+      this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
     }
   }
 
@@ -344,14 +415,28 @@ export class BuilderScene extends Phaser.Scene {
 
   private refreshGrid(): void {
     const store = courseStore.getState();
+    const HEIGHT_SCALE = 4;
+    // Clean up old slope walls
+    this.slopeTileSprites.forEach((g) => g.destroy());
+    this.slopeTileSprites = [];
+
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const tile = store.grid[row][col];
         this.tileSprites[row][col].setTexture(`tile_${tile.type}`);
 
+        // Update position for height
+        const basePos = this.tileToWorld(col, row);
+        const heightOffset = tile.height * HEIGHT_SCALE;
+        const pos = { x: basePos.x, y: basePos.y - heightOffset };
+        this.tileSprites[row][col].setPosition(pos.x, pos.y);
+        this.tileSprites[row][col].setDepth((col + row) * GRID_COLS + col + tile.height * 2);
+
+        // Draw slope walls
+        this.addSlopeWalls(col, row, pos, tile.height, store.grid);
+
         const key = `${col},${row}`;
         if (tile.vegetation) {
-          const pos = this.tileToWorld(col, row);
           this.addVegetationOverlay(col, row, pos, tile.vegetation);
         } else {
           this.removeVegetationOverlay(col, row);
@@ -423,7 +508,7 @@ export class BuilderScene extends Phaser.Scene {
       const tile = this.worldToTile(worldX, worldY);
 
       this.debugText.setText(
-        `Tile: ${tile.col},${tile.row}  Zoom: ${cam.zoom.toFixed(2)}\n` +
+        `Tile: ${tile.col},${tile.row}  H:${store.grid[tile.row]?.[tile.col]?.height ?? 0}  Zoom: ${cam.zoom.toFixed(2)}\n` +
         `Money: $${courseStore.getState().money}`
       );
 
@@ -532,9 +617,22 @@ export class BuilderScene extends Phaser.Scene {
     this.ensureActionSnapshot();
     if (this.builderMode === 'paint') {
       this.paintTile(col, row);
+    } else if (this.builderMode === 'height') {
+      this.paintHeightTile(col, row);
     } else {
       this.placeHoleElement(col, row);
     }
+  }
+
+  private paintHeightTile(col: number, row: number): void {
+    if (!this.heightMode) return;
+    const store = courseStore.getState();
+    const delta = this.heightMode === 'raise' ? 1 : -1;
+    const current = store.grid[row][col].height;
+    const next = current + delta;
+    if (next < -10 || next > 10) return;
+    store.adjustHeight(col, row, delta);
+    this.refreshGrid();
   }
 
   private paintTile(col: number, row: number): void {
@@ -796,7 +894,10 @@ export class BuilderScene extends Phaser.Scene {
     const noneBtn = document.createElement('button');
     noneBtn.textContent = '✕';
     noneBtn.title = 'Deselect tool (Esc)';
-    this.modeButtons = [paintBtn, holeBtn, noneBtn];
+    const heightBtn = document.createElement('button');
+    heightBtn.textContent = '⛰️ Height';
+    heightBtn.title = 'Raise/lower terrain';
+    this.modeButtons = [paintBtn, holeBtn, heightBtn, noneBtn];
 
     for (const btn of this.modeButtons) {
       btn.style.cssText = `
@@ -819,6 +920,12 @@ export class BuilderScene extends Phaser.Scene {
     });
     noneBtn.addEventListener('click', () => {
       this.builderMode = 'none';
+      this.updateModeButtons();
+      this.updateUIVisibility();
+    });
+    heightBtn.addEventListener('click', () => {
+      this.builderMode = 'height';
+      this.heightMode = 'raise';
       this.updateModeButtons();
       this.updateUIVisibility();
     });
@@ -865,6 +972,50 @@ export class BuilderScene extends Phaser.Scene {
     this.vegetationPickerContainer.appendChild(currentPreview);
 
     this.terrainPalette.appendChild(this.vegetationPickerContainer);
+
+    // Height controls container
+    this.heightControlsContainer = document.createElement('div');
+    this.heightControlsContainer.style.cssText = 'display: none; flex-direction: column; gap: 6px;';
+
+    const heightLabel = document.createElement('div');
+    heightLabel.textContent = 'Elevation (click to adjust):';
+    heightLabel.style.cssText = 'color: #aaa; font-size: 12px;';
+    this.heightControlsContainer.appendChild(heightLabel);
+
+    const raiseBtn = document.createElement('button');
+    raiseBtn.textContent = '⬆️ Raise (+1)';
+    raiseBtn.style.cssText = `
+      padding: 8px; border: 2px solid #8f6f3f; border-radius: 4px;
+      cursor: pointer; font-size: 12px; background: #5a4a2a; color: #ffcc80;
+      font-weight: bold;
+    `;
+    raiseBtn.addEventListener('click', () => {
+      this.heightMode = 'raise';
+      raiseBtn.style.borderColor = '#e0b06b';
+      lowerBtn.style.borderColor = '#8f6f3f';
+    });
+    this.heightControlsContainer.appendChild(raiseBtn);
+
+    const lowerBtn = document.createElement('button');
+    lowerBtn.textContent = '⬇️ Lower (−1)';
+    lowerBtn.style.cssText = `
+      padding: 8px; border: 2px solid #8f6f3f; border-radius: 4px;
+      cursor: pointer; font-size: 12px; background: #4a3a2a; color: #b0a0a0;
+      font-weight: bold;
+    `;
+    lowerBtn.addEventListener('click', () => {
+      this.heightMode = 'lower';
+      raiseBtn.style.borderColor = '#8f6f3f';
+      lowerBtn.style.borderColor = '#e0b06b';
+    });
+    this.heightControlsContainer.appendChild(lowerBtn);
+
+    const heightInfo = document.createElement('div');
+    heightInfo.style.cssText = 'color: #888; font-size: 10px; line-height: 1.3;';
+    heightInfo.textContent = 'Raise clicked tiles by 1. Adjacent tiles marked with slopes. Range: −10 to +10.';
+    this.heightControlsContainer.appendChild(heightInfo);
+
+    this.terrainPalette.appendChild(this.heightControlsContainer);
 
     // Hole controls container
     this.holeControlsContainer = document.createElement('div');
@@ -1049,8 +1200,10 @@ export class BuilderScene extends Phaser.Scene {
     this.modeButtons[0].style.borderColor = this.builderMode === 'paint' ? '#6bbf5e' : 'transparent';
     this.modeButtons[1].style.background = this.builderMode === 'hole' ? '#4a8f3f' : '#444';
     this.modeButtons[1].style.borderColor = this.builderMode === 'hole' ? '#6bbf5e' : 'transparent';
-    this.modeButtons[2].style.background = this.builderMode === 'none' ? '#8f3f3f' : '#444';
-    this.modeButtons[2].style.borderColor = this.builderMode === 'none' ? '#e06b6b' : 'transparent';
+    this.modeButtons[2].style.background = this.builderMode === 'height' ? '#8f6f3f' : '#444';
+    this.modeButtons[2].style.borderColor = this.builderMode === 'height' ? '#e0b06b' : 'transparent';
+    this.modeButtons[3].style.background = this.builderMode === 'none' ? '#8f3f3f' : '#444';
+    this.modeButtons[3].style.borderColor = this.builderMode === 'none' ? '#e06b6b' : 'transparent';
   }
 
   private updateUIVisibility(): void {
@@ -1058,10 +1211,17 @@ export class BuilderScene extends Phaser.Scene {
       this.terrainPalette.style.display = 'flex';
       this.terrainButtonsContainer.style.display = 'flex';
       this.holeControlsContainer.style.display = 'none';
+      this.heightControlsContainer.style.display = 'none';
     } else if (this.builderMode === 'hole') {
       this.terrainPalette.style.display = 'flex';
       this.terrainButtonsContainer.style.display = 'none';
       this.holeControlsContainer.style.display = 'flex';
+      this.heightControlsContainer.style.display = 'none';
+    } else if (this.builderMode === 'height') {
+      this.terrainPalette.style.display = 'flex';
+      this.terrainButtonsContainer.style.display = 'none';
+      this.holeControlsContainer.style.display = 'none';
+      this.heightControlsContainer.style.display = 'flex';
     } else {
       // Collapse the palette
       this.terrainPalette.style.display = 'none';
@@ -2337,6 +2497,8 @@ export class BuilderScene extends Phaser.Scene {
     this.flagSprites.clear();
     this.vegetationOverlaySprites.forEach((s) => s.destroy());
     this.vegetationOverlaySprites.clear();
+    this.slopeTileSprites.forEach((g) => g.destroy());
+    this.slopeTileSprites = [];
     this.buildingSprites.forEach((s) => s.destroy());
     this.buildingSprites.clear();
     this.golferSprites.forEach((s) => s.destroy());
