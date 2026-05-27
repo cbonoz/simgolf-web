@@ -338,44 +338,68 @@ export class BuilderScene extends Phaser.Scene {
   /** Draw slope wall graphics between tiles of different heights */
   private addSlopeWalls(col: number, row: number, pos: { x: number; y: number }, height: number, grid: Tile[][]): void {
     const HEIGHT_SCALE = 4;
+    // Only draw walls for the LOWER tile in a pair (processed from low height to high)
     // Check 4 cardinal neighbors
-    const dirs: [number, number, string][] = [[0, -1, 'top'], [0, 1, 'bottom'], [-1, 0, 'left'], [1, 0, 'right']];
+    const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
     for (const [dc, dr] of dirs) {
       const nc = col + dc;
       const nr = row + dr;
       if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
-      const neighborHeight = grid[nr][nc].height;
-      if (neighborHeight === height) continue;
+      const nh = grid[nr][nc].height;
+      if (nh <= height) continue; // Only draw when THIS tile is lower than neighbor
 
-      const diff = height - neighborHeight;
-      // Draw a wall on the face between this tile and the neighbor
-      const tcx = pos.x;
-      const tcy = pos.y + HEIGHT_SCALE * Math.max(0, -diff) / 2; // adjust to meet at midpoint
-      const wallHeight = Math.abs(diff) * HEIGHT_SCALE;
-      const wallDepth = Math.abs(diff) * 2;
+      const diff = nh - height; // positive
+      const wallH = diff * HEIGHT_SCALE;
+
+      const g = this.add.graphics();
+      // Depth between current tile and neighbor
+      g.setDepth((col + row) * GRID_COLS + col + 0.1);
+
+      // Dirt/brown color based on height difference (lighter = more visible)
+      const shade = Math.min(0x33 + diff * 8, 0x55);
+      const wallColor = Phaser.Display.Color.GetColor(shade + 0x33, shade, shade - 0x11);
+      g.fillStyle(wallColor, 1);
+
+      // Draw an isometric parallelogram face between the two tiles
+      // The wall face spans the tile edge perpendicular to the direction
+      const cx = pos.x;
+      const cy = pos.y;
       const hw = TILE_WIDTH / 2;
       const hh = TILE_HEIGHT / 2;
 
-      const g = this.add.graphics();
-      g.setDepth((col + row) * GRID_COLS + col + 0.1);
-
-      // Color based on height difference severity
-      const r = 100 - Math.abs(diff) * 5;
-      const gVal = 80 - Math.abs(diff) * 4;
-      const b = 50;
-      g.fillStyle(Phaser.Display.Color.GetColor(r, gVal, b), 1);
-
-      // Draw the side wall as a polygon
       if (dc === 0) {
-        // Vertical neighbor (row change) — wall along top or bottom
-        const wid = TILE_WIDTH * 0.4;
-        const sign = dr < 0 ? -1 : 1;
-        g.fillRect(tcx - wid / 2, tcy - (sign < 0 ? wallHeight : 0), wid, wallHeight);
+        // Vertical neighbor (row change) — wall along top or bottom edge
+        // This edge runs diagonally: from left-bottom to right-top
+        const sign = dr < 0 ? -1 : 1; // -1 = top neighbor, 1 = bottom neighbor
+        // The edge is an isometric line: offset by hw horizontal, hh vertical
+        const leftX = cx - hw;
+        const leftY = cy + sign * hh;
+        const rightX = cx + hw;
+        const rightY = cy - sign * hh;
+
+        g.beginPath();
+        g.moveTo(leftX, leftY);
+        g.lineTo(rightX, rightY);
+        g.lineTo(rightX, rightY - wallH);
+        g.lineTo(leftX, leftY - wallH);
+        g.closePath();
+        g.fillPath();
       } else {
-        // Horizontal neighbor (col change) — wall along side
-        const wid = TILE_HEIGHT * 0.4;
-        const sign = dc < 0 ? -1 : 1;
-        g.fillRect(tcx - (sign < 0 ? wallDepth : 0), tcy - wid / 2, wallDepth, wid);
+        // Horizontal neighbor (col change) — wall along left or right edge
+        const sign = dc < 0 ? -1 : 1; // -1 = left neighbor, 1 = right neighbor
+        // The edge runs diagonally: from top to bottom
+        const topX = cx - sign * hw;
+        const topY = cy - hh;
+        const botX = cx + sign * hw;
+        const botY = cy + hh;
+
+        g.beginPath();
+        g.moveTo(topX, topY);
+        g.lineTo(botX, botY);
+        g.lineTo(botX, botY - wallH);
+        g.lineTo(topX, topY - wallH);
+        g.closePath();
+        g.fillPath();
       }
 
       this.slopeTileSprites.push(g as unknown as Phaser.GameObjects.Sprite);
