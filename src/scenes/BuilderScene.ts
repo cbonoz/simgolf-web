@@ -489,9 +489,9 @@ export class BuilderScene extends Phaser.Scene {
   private setupInput(): void {
     const cam = this.cameras.main;
 
-    // --- Panning (right-click + drag, or middle-click + drag) ---
+    // --- Panning (right-click + drag, or left-click + drag when deselected) ---
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.rightButtonDown()) {
+      if (pointer.rightButtonDown() || (this.builderMode === 'none' && pointer.leftButtonDown())) {
         // Start panning
         this.isPanning = true;
         this.panStart = { x: pointer.x, y: pointer.y };
@@ -523,7 +523,8 @@ export class BuilderScene extends Phaser.Scene {
         }
       }
 
-      // Left click: start painting
+      // Left click: start painting — skip in none mode, already handled by panning
+      if (this.builderMode === 'none') return;
       this.isPainting = true;
       this.lastPaintedTile = '';
       const tile = this.worldToTile(pointer.worldX, pointer.worldY);
