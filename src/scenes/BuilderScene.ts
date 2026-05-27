@@ -28,7 +28,7 @@ export class BuilderScene extends Phaser.Scene {
   private helpText!: HTMLDivElement;
 
   // Hole mode
-  private builderMode: 'paint' | 'hole' = 'paint';
+  private builderMode: 'paint' | 'hole' | 'none' = 'paint';
   private selectedHoleId: number = 1;
   private teeSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private flagSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
@@ -71,6 +71,12 @@ export class BuilderScene extends Phaser.Scene {
     if ((e.key === 'y' || e.key === 'Y') && e.ctrlKey) {
       e.preventDefault();
       this.redo();
+    }
+    if (e.key === 'Escape' && this.builderMode !== 'none') {
+      e.preventDefault();
+      this.builderMode = 'none';
+      this.updateModeButtons();
+      this.updateUIVisibility();
     }
   };
 
@@ -249,8 +255,10 @@ export class BuilderScene extends Phaser.Scene {
   private updateHelpText(): void {
     if (this.builderMode === 'paint') {
       this.helpText.textContent = 'Left-click: Paint | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
-    } else {
+    } else if (this.builderMode === 'hole') {
       this.helpText.textContent = 'Left-click: Place tee/cup | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
+    } else {
+      this.helpText.textContent = 'Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo | Esc: Resume';
     }
   }
 
@@ -520,6 +528,7 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   private handleTileClick(col: number, row: number): void {
+    if (this.builderMode === 'none') return;
     this.ensureActionSnapshot();
     if (this.builderMode === 'paint') {
       this.paintTile(col, row);
@@ -724,7 +733,10 @@ export class BuilderScene extends Phaser.Scene {
     paintBtn.textContent = '🎨 Paint';
     const holeBtn = document.createElement('button');
     holeBtn.textContent = '⛳ Holes';
-    this.modeButtons = [paintBtn, holeBtn];
+    const noneBtn = document.createElement('button');
+    noneBtn.textContent = '✕';
+    noneBtn.title = 'Deselect tool (Esc)';
+    this.modeButtons = [paintBtn, holeBtn, noneBtn];
 
     for (const btn of this.modeButtons) {
       btn.style.cssText = `
@@ -742,6 +754,11 @@ export class BuilderScene extends Phaser.Scene {
     });
     holeBtn.addEventListener('click', () => {
       this.builderMode = 'hole';
+      this.updateModeButtons();
+      this.updateUIVisibility();
+    });
+    noneBtn.addEventListener('click', () => {
+      this.builderMode = 'none';
       this.updateModeButtons();
       this.updateUIVisibility();
     });
@@ -972,15 +989,22 @@ export class BuilderScene extends Phaser.Scene {
     this.modeButtons[0].style.borderColor = this.builderMode === 'paint' ? '#6bbf5e' : 'transparent';
     this.modeButtons[1].style.background = this.builderMode === 'hole' ? '#4a8f3f' : '#444';
     this.modeButtons[1].style.borderColor = this.builderMode === 'hole' ? '#6bbf5e' : 'transparent';
+    this.modeButtons[2].style.background = this.builderMode === 'none' ? '#8f3f3f' : '#444';
+    this.modeButtons[2].style.borderColor = this.builderMode === 'none' ? '#e06b6b' : 'transparent';
   }
 
   private updateUIVisibility(): void {
     if (this.builderMode === 'paint') {
+      this.terrainPalette.style.display = 'flex';
       this.terrainButtonsContainer.style.display = 'flex';
       this.holeControlsContainer.style.display = 'none';
-    } else {
+    } else if (this.builderMode === 'hole') {
+      this.terrainPalette.style.display = 'flex';
       this.terrainButtonsContainer.style.display = 'none';
       this.holeControlsContainer.style.display = 'flex';
+    } else {
+      // Collapse the palette
+      this.terrainPalette.style.display = 'none';
     }
     this.updateHelpText();
   }
