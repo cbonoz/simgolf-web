@@ -1784,10 +1784,10 @@ export class BuilderScene extends Phaser.Scene {
     tooltip.id = 'golfer-tooltip';
     tooltip.style.cssText = `
       position: fixed; z-index: 200; background: rgba(0,0,0,0.95); border-radius: 10px;
-      padding: 14px 18px; color: #fff; font-family: sans-serif; font-size: 14px;
-      width: 260px; pointer-events: none; line-height: 1.6;
+      padding: 16px 20px; color: #fff; font-family: sans-serif; font-size: 14px;
+      width: 280px; pointer-events: none; line-height: 1.6;
       border: 1px solid #ffcc80;
-      top: 10px; left: 50%; transform: translateX(-50%);
+      top: 10px; right: 220px;
     `;
 
     const name = document.createElement('div');
