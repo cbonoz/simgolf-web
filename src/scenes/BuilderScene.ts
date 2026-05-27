@@ -916,7 +916,7 @@ export class BuilderScene extends Phaser.Scene {
       position: fixed; top: 10px; left: 10px; z-index: 100;
       background: rgba(0,0,0,0.85); border-radius: 8px; padding: 12px;
       display: flex; flex-direction: column; gap: 6px; font-family: sans-serif;
-      min-width: 160px; max-height: 90vh; overflow-y: auto;
+      min-width: 180px; width: 180px; max-height: 90vh; overflow-y: auto;
     `;
 
     // Title
