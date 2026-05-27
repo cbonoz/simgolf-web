@@ -51,6 +51,7 @@ export class BuilderScene extends Phaser.Scene {
   private powerHeld = false;
   private powerStartTime = 0;
   private playerBall: Ball | null = null;
+  private lastPlayerBallSprite: Phaser.GameObjects.Sprite | null = null; // sprite from previous shot
   private challengeScorecardEl: HTMLDivElement | null = null;
   private playerWalkTarget: { col: number; row: number } | null = null;
   private challengeModeBtn: HTMLButtonElement | null = null;
@@ -400,6 +401,10 @@ export class BuilderScene extends Phaser.Scene {
       if (sprite) { sprite.destroy(); this.golferSprites.delete(this.opponentId); }
       this.opponentId = null;
     }
+    if (this.lastPlayerBallSprite) {
+      this.lastPlayerBallSprite.destroy();
+      this.lastPlayerBallSprite = null;
+    }
     if (this.aimLine) { this.aimLine.destroy(); this.aimLine = null; }
     if (this.powerBar) { this.powerBar.remove(); this.powerBar = null; }
     this.terrainPalette.style.display = 'flex';
@@ -520,6 +525,9 @@ export class BuilderScene extends Phaser.Scene {
     if (this.playerState === 'flight' && this.playerBall) {
       this.playerBall.update(delta);
       if (this.playerBall.complete) {
+        // Don't remove sprite here — it's the visual landing marker
+        // Save reference so the next swing can clean it up
+        this.lastPlayerBallSprite = this.playerBall.sprite;
         this.playerBall = null;
         // onComplete callback in executeChallengeSwing has already set
         // playerStrokes and playerState. Just update UI.
@@ -687,6 +695,11 @@ export class BuilderScene extends Phaser.Scene {
     const music = this.musicScene;
 
     // Clean up previous ball sprite to prevent accumulating orange balls
+    // The sprite was saved when the previous ball completed — destroy it now
+    if (this.lastPlayerBallSprite) {
+      this.lastPlayerBallSprite.destroy();
+      this.lastPlayerBallSprite = null;
+    }
     if (this.playerBall) {
       this.playerBall.removeSprite();
       this.playerBall = null;
