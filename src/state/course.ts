@@ -101,10 +101,13 @@ function createDefaultHoles(): HoleConfig[] {
   }));
 }
 
-/** Place the clubhouse near hole 1's tee, or at a default position if no tee exists */
+/** Place the clubhouse at a random position on the course */
 function defaultBuildings(): PlacedBuilding[] {
-  // We'll place near the tee of hole 1 or fall back to (0, GRID_ROWS-1)
-  return [{ typeKey: 'clubhouse', col: 3, row: GRID_ROWS - 4 }];
+  // Random position — leave margin from edges so it's visible
+  const margin = 3;
+  const col = margin + Math.floor(Math.random() * (GRID_COLS - margin * 2 - 2));
+  const row = margin * 2 + Math.floor(Math.random() * (GRID_ROWS - margin * 3 - 2));
+  return [{ typeKey: 'clubhouse', col, row }];
 }
 
 /** Find the clubhouse position, or a reasonable default */

@@ -96,12 +96,14 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Center camera on the grid
+    // Center camera on the grid with zoom to see clubhouse
     const cam = this.cameras.main;
     const centerCol = (GRID_COLS - 1) / 2;
     const centerRow = (GRID_ROWS - 1) / 2;
     cam.scrollX = (centerCol - centerRow) * (TILE_WIDTH / 2) + this.OFFSET_X - cam.width / 2;
     cam.scrollY = (centerCol + centerRow) * (TILE_HEIGHT / 2) + this.OFFSET_Y - cam.height / 2;
+    // Zoom out to 0.6 so more of the course (including clubhouse) is visible
+    cam.setZoom(0.6);
 
     // Prevent right-click context menu so we can use right-drag for panning
     this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
