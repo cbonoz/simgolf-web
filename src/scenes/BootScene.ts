@@ -171,6 +171,17 @@ export class BootScene extends Phaser.Scene {
     ballG.generateTexture('ball', 8, 8);
     ballG.destroy();
 
+    // Player ball (for challenge mode) — brighter orange/red
+    const playerBallG = this.add.graphics();
+    playerBallG.fillStyle(0xff6600, 1);
+    playerBallG.fillCircle(5, 5, 4);
+    playerBallG.lineStyle(1, 0xffaa00, 0.8);
+    playerBallG.strokeCircle(5, 5, 4);
+    playerBallG.fillStyle(0xffffff, 0.4);
+    playerBallG.fillCircle(4, 3, 1.5);
+    playerBallG.generateTexture('ball_player', 10, 10);
+    playerBallG.destroy();
+
     // Tee marker
     const teeG = this.add.graphics();
     teeG.fillStyle(0xffffff, 0.8);

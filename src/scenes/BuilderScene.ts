@@ -54,6 +54,7 @@ export class BuilderScene extends Phaser.Scene {
   private challengeScorecardEl: HTMLDivElement | null = null;
   private playerWalkTarget: { col: number; row: number } | null = null;
   private challengeModeBtn: HTMLButtonElement | null = null;
+  private playerMarker: Phaser.GameObjects.Sprite | null = null; // orange ball marker for player position
 
   // Revenue tick
   private revenueTickTimer = 0;
@@ -330,6 +331,23 @@ export class BuilderScene extends Phaser.Scene {
     this.playerWalkTarget = null;
     this.playerBall = null;
 
+    // Create persistent orange ball marker at player position
+    const pos = this.tileToWorld(this.playerCol, this.playerRow);
+    this.playerMarker = this.add.sprite(pos.x, pos.y - 4, 'ball_player');
+    this.playerMarker.setOrigin(0.5, 0.5);
+    this.playerMarker.setDepth(9996);
+    this.playerMarker.setScale(1.0);
+    // Pulsing glow effect
+    this.tweens.add({
+      targets: this.playerMarker,
+      scale: { from: 0.8, to: 1.2 },
+      alpha: { from: 0.6, to: 1 },
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
     // Spawn a single AI opponent paired with the player
     const gStore = golferStore.getState();
     const opponent = gStore.spawnGolfer(hole1.tee.col, hole1.tee.row);
@@ -470,6 +488,17 @@ export class BuilderScene extends Phaser.Scene {
       this.aimLine.destroy();
       this.aimLine = null;
     }
+    if (this.playerMarker) {
+      this.playerMarker.destroy();
+      this.playerMarker = null;
+    }
+  }
+
+  /** Move the player's orange ball marker to the current player position */
+  private updatePlayerMarker(): void {
+    if (!this.playerMarker) return;
+    const pos = this.tileToWorld(this.playerCol, this.playerRow);
+    this.playerMarker.setPosition(pos.x, pos.y - 4);
   }
 
   private updateChallenge(delta: number): void {
@@ -626,6 +655,7 @@ export class BuilderScene extends Phaser.Scene {
     this.playerRow = nextHole.tee.row;
     this.playerState = 'addressing';
     this.playerWalkTarget = null;
+    this.updatePlayerMarker();
     this.updateChallengeScorecard();
   }
 
@@ -689,7 +719,7 @@ export class BuilderScene extends Phaser.Scene {
     landingCol = Math.max(0, Math.min(GRID_COLS - 1, landingCol));
     landingRow = Math.max(0, Math.min(GRID_ROWS - 1, landingRow));
 
-    // Create ball entity for flight animation
+    // Create ball entity for flight animation — override with player ball texture
     const maxArc = store.grid[landingRow][landingCol].type === 'water' || store.grid[landingRow][landingCol].type === 'green' ? 800 : 500;
     this.playerBall = new Ball(
       this, this.playerCol, this.playerRow,
@@ -699,8 +729,12 @@ export class BuilderScene extends Phaser.Scene {
         // on complete — ball sits at landing
         this.playerCol = landingCol;
         this.playerRow = landingRow;
+        this.updatePlayerMarker();
       }
     );
+    // Use bright orange player ball texture
+    this.playerBall.sprite.setTexture('ball_player');
+    this.playerBall.sprite.setScale(1.0);
 
     // Check for putting
     const landingTile = store.grid[landingRow][landingCol];
