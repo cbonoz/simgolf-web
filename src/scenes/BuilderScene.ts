@@ -3431,6 +3431,131 @@ export class BuilderScene extends Phaser.Scene {
       // Store the landing position for walking
       walkTarget: newState === 'reacting' ? newTilePos : null,
     });
+
+    // Trigger visual reaction based on what happened
+    const reactionType = this.determineReaction(tile.type, newStrokes, golfer, newState);
+    this.triggerGolferReaction(golferId, reactionType);
+  }
+
+  /**
+   * Determine what kind of visual reaction the golfer should have.
+   */
+  private determineReaction(
+    tileType: string,
+    newStrokes: number,
+    golfer: Golfer,
+    nextState: string,
+  ): 'celebration' | 'frustration' | 'hole_complete_celebration' | 'hole_complete_pickup' | 'nod' {
+    // Hole-in-one or under par celebration
+    if (nextState === 'hole_complete') {
+      const hole = courseStore.getState().holes.find((h) => h.id === golfer.currentHole);
+      const par = hole?.par ?? 3;
+      if (newStrokes <= par - 2 || newStrokes === 1) return 'hole_complete_celebration';
+      if (newStrokes <= par) return 'celebration';
+      return 'hole_complete_pickup';
+    }
+    // Hit hazard — frustration
+    if (tileType === 'water' || tileType === 'trees') return 'frustration';
+    // Max strokes — frustration
+    if (newStrokes >= MAX_STROKES_PER_HOLE - 1) return 'frustration';
+    // Birdie or better
+    const hole = courseStore.getState().holes.find((h) => h.id === golfer.currentHole);
+    const par = hole?.par ?? 3;
+    if (newStrokes + 1 <= par - 1) return 'celebration';
+    // Par — nod
+    if (newStrokes + 1 <= par) return 'nod';
+    // Bogey+ — frustration
+    return 'frustration';
+  }
+
+  /**
+   * Trigger a visual reaction on a golfer sprite using Phaser tweens.
+   */
+  private triggerGolferReaction(golferId: number, type: string): void {
+    const sprite = this.golferSprites.get(golferId);
+    if (!sprite) return;
+
+    // Kill any existing tweens on this sprite
+    this.tweens.killTweensOf(sprite);
+
+    switch (type) {
+      case 'celebration':
+        // Scale bounce + green tint flash
+        sprite.setTint(0x4caf50);
+        this.tweens.add({
+          targets: sprite,
+          scaleX: { from: sprite.scaleX, to: sprite.scaleX * 1.3 },
+          scaleY: { from: sprite.scaleY, to: sprite.scaleY * 1.3 },
+          duration: 200,
+          yoyo: true,
+          ease: 'Bounce.easeOut',
+          onComplete: () => {
+            sprite.clearTint();
+          },
+        });
+        break;
+
+      case 'frustration':
+        // Red tint + shake
+        sprite.setTint(0xff4444);
+        this.tweens.add({
+          targets: sprite,
+          x: { from: sprite.x - 3, to: sprite.x + 3 },
+          duration: 60,
+          yoyo: true,
+          repeat: 4,
+          onComplete: () => {
+            sprite.x = sprite.x; // reset position
+            sprite.clearTint();
+          },
+        });
+        break;
+
+      case 'hole_complete_celebration':
+        // Big celebration — multiple bounces + green/gold tint
+        sprite.setTint(0xffd700);
+        this.tweens.add({
+          targets: sprite,
+          scaleX: { from: sprite.scaleX, to: sprite.scaleX * 1.5 },
+          scaleY: { from: sprite.scaleY, to: sprite.scaleY * 1.5 },
+          duration: 150,
+          yoyo: true,
+          repeat: 2,
+          ease: 'Bounce.easeOut',
+          onComplete: () => {
+            sprite.clearTint();
+          },
+        });
+        break;
+
+      case 'hole_complete_pickup':
+        // Pickup reaction — shrug/nod with orange tint
+        sprite.setTint(0xffa500);
+        this.tweens.add({
+          targets: sprite,
+          scaleX: { from: sprite.scaleX, to: sprite.scaleX * 1.15 },
+          scaleY: { from: sprite.scaleY, to: sprite.scaleY * 1.15 },
+          duration: 300,
+          yoyo: true,
+          ease: 'Sine.easeInOut',
+          onComplete: () => {
+            sprite.clearTint();
+          },
+        });
+        break;
+
+      case 'nod':
+      default:
+        // Small nod — subtle scale bob
+        this.tweens.add({
+          targets: sprite,
+          scaleY: { from: sprite.scaleY, to: sprite.scaleY * 0.9 },
+          duration: 150,
+          yoyo: true,
+          ease: 'Sine.easeInOut',
+        });
+        break;
+    }
   }
 
   /**
