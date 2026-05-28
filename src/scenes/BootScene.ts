@@ -22,7 +22,15 @@ export class BootScene extends Phaser.Scene {
     this.generateEntityTextures();
     this.generateBuildingTextures();
     console.log('[Boot] Textures generated, starting TitleScene');
-    this.scene.start('TitleScene');
+
+    // Fade in, then transition to TitleScene
+    this.cameras.main.fadeIn(400);
+    this.time.delayedCall(500, () => {
+      this.cameras.main.fadeOut(300, 0, 0, 0);
+      this.time.delayedCall(350, () => {
+        this.scene.start('TitleScene');
+      });
+    });
   }
 
   private generateTileTextures(): void {

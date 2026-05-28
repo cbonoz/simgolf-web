@@ -79,7 +79,7 @@ export class BuilderScene extends Phaser.Scene {
   private heightControlsContainer!: HTMLDivElement;
   private buildingControlsContainer!: HTMLDivElement;
   private selectedBuildingType: string | null = null;
-  private modeButtons!: HTMLButtonElement[];
+
   // Golfers (unified build+play)
   private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
   private activeBalls: Map<number, Ball> = new Map();
@@ -149,6 +149,9 @@ export class BuilderScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Fade in
+    this.cameras.main.fadeIn(500, 0, 0, 0);
+
     // Center camera on the grid with zoom to see clubhouse
     const cam = this.cameras.main;
     const centerCol = (GRID_COLS - 1) / 2;
@@ -1340,7 +1343,7 @@ export class BuilderScene extends Phaser.Scene {
       const tile = this.worldToTile(worldX, worldY);
 
       this.debugText.setText(
-        `Tile: ${tile.col},${tile.row}  H:${store.grid[tile.row]?.[tile.col]?.height ?? 0}  Zoom: ${cam.zoom.toFixed(2)}\n` +
+        `Tile: ${tile.col},${tile.row}  H:${courseStore.getState().grid[tile.row]?.[tile.col]?.height ?? 0}  Zoom: ${cam.zoom.toFixed(2)}\n` +
         `Money: $${courseStore.getState().money}`
       );
 
@@ -2182,7 +2185,10 @@ export class BuilderScene extends Phaser.Scene {
     `;
     returnBtn.addEventListener('click', () => {
       courseStore.getState().saveCourse();
-      this.scene.start('TitleScene');
+      this.cameras.main.fadeOut(400, 0, 0, 0);
+      this.time.delayedCall(450, () => {
+        this.scene.start('TitleScene');
+      });
     });
     this.terrainPalette.appendChild(returnBtn);
 
@@ -3369,7 +3375,7 @@ export class BuilderScene extends Phaser.Scene {
 
     let newStrokes = golfer.strokes + 1;
     let newState: 'reacting' | 'hole_complete' = 'reacting';
-    let stateTimer = GAME_CONFIG.BALL_LAND_REACT_TIME;
+    let stateTimer: number = GAME_CONFIG.BALL_LAND_REACT_TIME;
     let newTilePos = { col: landingCol, row: landingRow };
 
     const effect = TERRAIN_EFFECTS[tile.type];

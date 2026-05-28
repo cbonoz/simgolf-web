@@ -14,6 +14,9 @@ export class TitleScene extends Phaser.Scene {
   create(): void {
     const { width, height } = this.cameras.main;
 
+    // Fade in
+    this.cameras.main.fadeIn(500, 0, 0, 0);
+
     // Background gradient
     this.cameras.main.setBackgroundColor('#0d2818');
 
@@ -51,8 +54,7 @@ export class TitleScene extends Phaser.Scene {
 
     if (hasSave) {
       this.createButton(width / 2, buttonY, '[ Continue ]', '#4caf50', '#81c784', () => {
-        this.cleanupBgSprites();
-        this.scene.start('BuilderScene');
+        this.transitionToBuilder();
       });
     }
 
@@ -64,8 +66,7 @@ export class TitleScene extends Phaser.Scene {
       '#4caf50', '#81c784',
       () => {
         courseStore.getState().resetCourse();
-        this.cleanupBgSprites();
-        this.scene.start('BuilderScene');
+        this.transitionToBuilder();
       }
     );
 
@@ -93,8 +94,7 @@ export class TitleScene extends Phaser.Scene {
         const json = reader.result as string;
         if (courseStore.getState().loadFromSave(json)) {
           courseStore.getState().saveCourse();
-          this.cleanupBgSprites();
-          this.scene.start('BuilderScene');
+          this.transitionToBuilder();
         } else {
           alert('Failed to load save file. It may be corrupted or from a newer version.');
         }
@@ -128,6 +128,14 @@ export class TitleScene extends Phaser.Scene {
     github.on('pointerout', () => github.setColor('#666666'));
     github.on('pointerdown', () => {
       window.open('https://github.com/cbonoz/simgolf-web', '_blank');
+    });
+  }
+
+  private transitionToBuilder(): void {
+    this.cleanupBgSprites();
+    this.cameras.main.fadeOut(400, 0, 0, 0);
+    this.time.delayedCall(450, () => {
+      this.scene.start('BuilderScene');
     });
   }
 
