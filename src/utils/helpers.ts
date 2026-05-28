@@ -62,3 +62,26 @@ export function totalCoursePar(holes: { tee: unknown; cup: unknown; par: number 
 export function countConfiguredHoles(holes: { tee: unknown; cup: unknown }[]): number {
   return holes.filter((h) => h.tee && h.cup).length;
 }
+
+/**
+ * Format a score relative to par.
+ * Returns "E" for even, "-N" for under par, "+N" for over par.
+ */
+export function formatVsPar(diff: number): string {
+  if (diff === 0) return 'E';
+  if (diff < 0) return `${diff}`;
+  return `+${diff}`;
+}
+
+/**
+ * Return a CSS color string for a score relative to par.
+ * Green for under par, white for par, yellow for bogey, orange for double, red for worse.
+ */
+export function vsParColor(diff: number): string {
+  if (diff <= -2) return '#2ecc71';   // Eagle or better — bright green
+  if (diff === -1) return '#7dcea0';   // Birdie — light green
+  if (diff === 0) return '#ffffff';    // Par — white
+  if (diff === 1) return '#f1c40f';    // Bogey — yellow
+  if (diff === 2) return '#e67e22';    // Double bogey — orange
+  return '#e74c3c';                     // Triple+ — red
+}

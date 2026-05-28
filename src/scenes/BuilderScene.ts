@@ -3,7 +3,7 @@ import { courseStore, Tile, HoleConfig, PlacedBuilding, getClubhousePosition, ge
 import { golferStore, Golfer, generateThought } from '../state/golfers';
 import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
 import { GAME_CONFIG } from '../utils/gameConfig';
-import { tileToScreen, screenToTile, clampTile, calculatePar, totalCoursePar, countConfiguredHoles } from '../utils/helpers';
+import { tileToScreen, screenToTile, clampTile, calculatePar, totalCoursePar, countConfiguredHoles, formatVsPar, vsParColor } from '../utils/helpers';
 import { Ball } from '../entities/Ball';
 import { MusicScene } from './MusicScene';
 
@@ -2861,16 +2861,88 @@ export class BuilderScene extends Phaser.Scene {
 
   private updateScorecard(): void {
     const gStore = golferStore.getState();
+    const store = courseStore.getState();
     if (gStore.golfers.length === 0) {
       this.scorecardEl.innerHTML = '<em>No golfers on course</em>';
       return;
     }
 
-    let html = '<table style="border-collapse:collapse;width:100%;"><tr><th style="text-align:left;padding:1px 3px;">#</th><th style="text-align:left;padding:1px 3px;">Hole</th><th style="text-align:left;padding:1px 3px;">Str</th><th style="text-align:left;padding:1px 3px;">Tot</th></tr>';
+    const GOLFER_COLORS = ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#e67e22', '#9b59b6', '#1abc9c', '#e84393'];
+
+    let html = '<table style="border-collapse:collapse;width:100%;font-size:10px;">';
+
+    // Header
+    html += '<tr style="border-bottom:1px solid #555;">';
+    html += '<th style="text-align:left;padding:1px 3px;">Golfer</th>';
+    html += '<th style="text-align:left;padding:1px 3px;">Hole</th>';
+    html += '<th style="text-align:left;padding:1px 3px;">Ths</th>';
+    html += '<th style="text-align:left;padding:1px 3px;">Tot</th>';
+    html += '<th style="text-align:left;padding:1px 3px;">±Par</th>';
+    html += '</tr>';
+
     for (const g of gStore.golfers) {
+      const color = GOLFER_COLORS[g.colorIndex % GOLFER_COLORS.length];
       const holeLabel = g.currentHole <= 9 ? `H${g.currentHole}` : 'Done';
-      html += `<tr><td style="padding:1px 3px;">${g.id}</td><td style="padding:1px 3px;">${holeLabel}</td><td style="padding:1px 3px;">${g.strokes}</td><td style="padding:1px 3px;">${g.totalStrokes}</td></tr>`;
+
+      // Calculate score vs par for current hole
+      const hole = store.holes.find((h) => h.id === g.currentHole);
+      const holePar = hole?.par ?? 3;
+
+      // Calculate total vs par from completed holes
+      let totalVsPar = 0;
+      for (let i = 0; i < g.scorecard.length; i++) {
+        const h = store.holes.find((h) => h.id === i + 1);
+        totalVsPar += g.scorecard[i] - (h?.par ?? 3);
+      }
+
+      // This hole vs par (if completed)
+      let holeVsParStr = '';
+      let holeVsParColor = '#ccc';
+      if (g.state === 'hole_complete' || g.state === 'round_complete') {
+        const diff = g.strokes - holePar;
+        holeVsParStr = formatVsPar(diff);
+        holeVsParColor = vsParColor(diff);
+      } else if (g.strokes > 0) {
+        // In progress — show projected vs par
+        const diff = g.strokes - holePar;
+        holeVsParStr = g.strokes > holePar ? `+${g.strokes - holePar}` : `${g.strokes - holePar}`;
+        holeVsParColor = vsParColor(diff);
+      }
+
+      // Total vs par string
+      const totalVsParStr = formatVsPar(totalVsPar);
+      const totalVsParColor = vsParColor(totalVsPar);
+
+      // Golfer name with color dot
+      const nameShort = g.name.length > 12 ? g.name.slice(0, 11) + '…' : g.name;
+
+      html += '<tr style="border-bottom:1px solid #333;">';
+      html += `<td style="padding:1px 3px;"><span style="color:${color};">●</span> ${nameShort}</td>`;
+      html += `<td style="padding:1px 3px;">${holeLabel}</td>`;
+      html += `<td style="padding:1px 3px;">${g.strokes}</td>`;
+      html += `<td style="padding:1px 3px;">${g.totalStrokes}</td>`;
+      html += `<td style="padding:1px 3px;color:${totalVsParColor};font-weight:bold;">${totalVsParStr}</td>`;
+      html += '</tr>';
+
+      // Show completed hole scores inline if they have a scorecard
+      if (g.scorecard.length > 0) {
+        let scoresStr = '';
+        for (let i = 0; i < g.scorecard.length; i++) {
+          const h = store.holes.find((h) => h.id === i + 1);
+          const sPar = h?.par ?? 3;
+          const sDiff = g.scorecard[i] - sPar;
+          const sColor = vsParColor(sDiff);
+          const label = formatVsPar(sDiff);
+          scoresStr += `<span style="color:${sColor};">H${i + 1}:${g.scorecard[i]}${label !== 'E' ? label : ''}</span> `;
+        }
+        html += `<tr><td colspan="5" style="padding:0 3px 2px 3px;font-size:9px;color:#999;line-height:1.4;">${scoresStr}</td></tr>`;
+      }
+
+      // Show thought bubble
+      const thought = generateThought(g, store.grid, store.holes);
+      html += `<tr><td colspan="5" style="padding:0 3px 3px 3px;font-size:8px;color:#777;font-style:italic;">💭 ${thought}</td></tr>`;
     }
+
     html += '</table>';
     this.scorecardEl.innerHTML = html;
   }
