@@ -7,6 +7,7 @@ import { tileToScreen, screenToTile, clampTile, calculatePar, totalCoursePar, co
 import { Ball } from '../entities/Ball';
 import { MusicScene } from './MusicScene';
 import { ChallengeMode, ChallengeHost, type ChallengeResultData, type SwingResult } from '../systems/ChallengeMode';
+import { DayCycle, type DayCycleHost } from '../systems/DayCycle';
 
 type CourseSnapshot = {
   grid: Tile[][];
@@ -14,7 +15,7 @@ type CourseSnapshot = {
   money: number;
 };
 
-export class BuilderScene extends Phaser.Scene implements ChallengeHost {
+export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycleHost {
   private tileSprites: Phaser.GameObjects.Sprite[][] = [];
   private cursor!: Phaser.GameObjects.Sprite;
   private debugText!: Phaser.GameObjects.Text;
@@ -35,6 +36,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
   // Challenge mode (1:1 player) — extracted to ChallengeMode module
   private challenge = new ChallengeMode(this);
 
+  // Day/night cycle + economy — extracted to DayCycle module
+  private dayCycle = new DayCycle(this);
+
   // Challenge rendering state (Phaser-side — managed by host methods)
   private aimLine: Phaser.GameObjects.Graphics | null = null;
   private powerBar: HTMLDivElement | null = null;
@@ -42,10 +46,6 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
   private playerBall: Ball | null = null;
   private lastPlayerBallSprite: Phaser.GameObjects.Sprite | null = null;
   private challengeBtn: HTMLButtonElement | null = null;
-
-  // Revenue tick
-  private revenueTickTimer = 0;
-  private readonly REVENUE_TICK_INTERVAL = 30000; // ms at 1x scale (30 game seconds)
 
   // Hole mode
   private builderMode: 'paint' | 'hole' | 'height' | 'buildings' | 'none' = 'paint';
@@ -81,11 +81,6 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
   private golferCountDisplay!: HTMLDivElement;
   private clockEl!: HTMLDivElement;
   private playActive = true; // golfers active by default
-
-  // Night/day transition
-  private isNightMode = false;
-  private nightTransitionEl: HTMLDivElement | null = null;
-  private nightTransitionReady = false; // true when all golfers are done during night
 
   // Undo/redo
   private undoStack: CourseSnapshot[] = [];
@@ -184,13 +179,13 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
 
     // Initialize golfers for unified build+play
     golferStore.getState().resetGolfers();
-    this.spawnInitialGolfers();
+    this.showSpawnInitialGolfers();
 
     // Get reference to MusicScene for SFX
     this.musicScene = this.scene.get('MusicScene') as MusicScene;
   }
 
-  private spawnInitialGolfers(): void {
+  showSpawnInitialGolfers(): void {
     const store = courseStore.getState();
     const hole1 = store.holes.find((h) => h.id === 1);
     if (!hole1?.tee) return;
@@ -278,31 +273,12 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
     return (col + row) * GRID_COLS + col + 0.5;
   }
 
-  /** Update spawn parameters based on current day phase */
+  /** Update spawn parameters based on current day phase — delegated to DayCycle */
   private updateSpawnParams(gameTimeMinutes: number): void {
-    const phase = getDayPhase(gameTimeMinutes);
-    switch (phase) {
-      case 'morning':
-        this.SPAWN_INTERVAL = 15000;  // slow build
-        this.MAX_GOLFERS = 6;
-        this.MIN_GOLFERS = 1;
-        break;
-      case 'peak':
-        this.SPAWN_INTERVAL = 6000;   // fast — keep course lively
-        this.MAX_GOLFERS = 10;
-        this.MIN_GOLFERS = 2;
-        break;
-      case 'evening':
-        this.SPAWN_INTERVAL = 12000;  // tapering
-        this.MAX_GOLFERS = 8;
-        this.MIN_GOLFERS = 1;
-        break;
-      case 'night':
-        this.SPAWN_INTERVAL = 999999; // effectively disabled (night check handles this too)
-        this.MAX_GOLFERS = 0;
-        this.MIN_GOLFERS = 0;
-        break;
-    }
+    this.dayCycle.update(gameTimeMinutes);
+    this.SPAWN_INTERVAL = this.dayCycle.spawnInterval;
+    this.MAX_GOLFERS = this.dayCycle.maxGolfers;
+    this.MIN_GOLFERS = this.dayCycle.minGolfers;
   }
 
   private tileToWorld(col: number, row: number): { x: number; y: number } {
@@ -314,85 +290,29 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
     return clampTile(result.col, result.row, GRID_COLS, GRID_ROWS);
   }
 
-  /** Collect revenue from all revenue-category buildings */
-  private processRevenueTick(): void {
-    const store = courseStore.getState();
-    const repMult = store.getReputationMultiplier();
-    let totalRevenue = 0;
-    for (const bld of store.buildings) {
-      const bt = BUILDING_TYPES.find((b) => b.key === bld.typeKey);
-      if (!bt || bt.category !== 'revenue') continue;
-      const rate = bt.key === 'clubhouse' ? 50 : bt.key === 'shop' ? 25 : bt.key === 'snack_bar' ? 15 : 0;
-      totalRevenue += Math.round(rate * repMult);
-    }
-    if (totalRevenue > 0) {
-      store.addRevenue(totalRevenue);
-      // Show discrete revenue indicator near the money display
-      if (this.revenueIndicatorEl) {
-        this.revenueIndicatorEl.textContent = `🏪 +$${totalRevenue}`;
-        this.revenueIndicatorEl.style.opacity = '1';
-        // Fade out after 2.5s
-        setTimeout(() => {
-          this.revenueIndicatorEl.style.opacity = '0';
-        }, 2500);
-      }
-      this.updateMoneyDisplay();
-    }
+  /** Detect night phase and handle day-end transition — delegated to DayCycle */
+  private checkNightPhase(gameTimeMinutes: number): void {
+    this.dayCycle.update(gameTimeMinutes);
   }
 
-  /** Apply reputation bonuses from decor buildings (bench, fountain, garden) */
-  private processDecorBonuses(): void {
+  /** Show the end-of-day transition overlay with summary */
+  /** Show end-of-day modal — managed by DayCycle */
+  private showDayTransitionModal(): void {
+    // DayCycle handles this internally
+  }
+
+  /** Hide the day transition modal */
+  private hideNightTransitionModal(): void {
+    this.dayCycle.cleanup();
+  }
+
+  /** Advance to the next day — reset time, counters, re-enable spawning */
+  private continueToNextDay(): void {
+    // DayCycle handles this via the continue button click handler
     const store = courseStore.getState();
-    const decorBuildings = store.buildings.filter((b) => {
-      const bt = BUILDING_TYPES.find((t) => t.key === b.typeKey);
-      return bt?.category === 'decor';
-    });
-    if (decorBuildings.length === 0) return;
-
-    let totalBonus = 0;
-
-    for (const bld of decorBuildings) {
-      const bt = BUILDING_TYPES.find((t) => t.key === bld.typeKey);
-      if (!bt) continue;
-
-      // Base rates per decor type
-      let base: number;
-      if (bt.key === 'bench') base = 0.1;
-      else if (bt.key === 'fountain') base = 0.15;
-      else if (bt.key === 'garden') base = 0.2;
-      else continue;
-
-      // Check adjacency within 3 tiles of any tee or cup
-      const hasAdjacency = store.holes.some((h) => {
-        const targets = [h.tee, h.cup].filter(Boolean);
-        return targets.some((t) => {
-          if (!t) return false;
-          const dist = Math.abs(bld.col - t.col) + Math.abs(bld.row - t.row);
-          return dist <= 3;
-        });
-      });
-
-      const bonus = hasAdjacency ? base * 1.5 : base;
-      totalBonus += bonus;
-    }
-
-    // Apply accumulated reputation
-    for (let i = 0; i < 3; i++) {
-      store.addReputation(2.5 + totalBonus);
-    }
-
-    // Decor gives a fixed reputation value (2.5 + decor bonus) added 3x for stronger effect
-    // so total rep increase ≈ totalBonus * 3 on the rolling average
-
-    // Show a decor notification
-    if (totalBonus > 0 && this.revenueIndicatorEl) {
-      const sbBonus = Math.round(totalBonus * 100) / 100;
-      this.revenueIndicatorEl.textContent = `🌿 +${sbBonus} rep (decor)`;
-      this.revenueIndicatorEl.style.opacity = '1';
-      setTimeout(() => {
-        this.revenueIndicatorEl.style.opacity = '0';
-      }, 2500);
-    }
+    store.resetDayCounters();
+    store.nextDay();
+    this.showSpawnInitialGolfers();
   }
 
   // === CHALLENGE MODE ===
@@ -1367,7 +1287,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
     document.body.appendChild(overlay);
   }
 
-  private showTemporaryMessage(msg: string): void {
+  showTemporaryMessage(msg: string): void {
     const toast = document.createElement('div');
     toast.className = 'builder-toast';
     toast.textContent = msg;
@@ -1381,7 +1301,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
     setTimeout(() => toast.remove(), 2500);
   }
 
-  private formatGameTimeDisplay(minutes: number): string {
+  formatGameTimeDisplay(minutes: number): string {
     const totalMinutes = Math.floor(minutes);
     const hour24 = Math.floor(totalMinutes / 60) % 24;
     const min = totalMinutes % 60;
@@ -1391,160 +1311,6 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
   }
 
   /** Check if game time has entered night phase and manage transition */
-  private checkNightPhase(gameTimeMinutes: number): void {
-    const hour = (Math.floor(gameTimeMinutes / 60) % 24);
-    const isNight = hour >= 20 || hour < 6;
-
-    if (isNight && !this.isNightMode) {
-      // Entering night mode — stop spawning, wait for golfers
-      this.isNightMode = true;
-      this.nightTransitionReady = false;
-      this.showTemporaryMessage('🌙 Night has fallen — last golfers finishing up...');
-    }
-
-    if (!isNight && this.isNightMode) {
-      // Morning came (e.g. nextDay was called) — exit night mode
-      this.isNightMode = false;
-      this.nightTransitionReady = false;
-      this.hideNightTransitionModal();
-    }
-
-    if (this.isNightMode && !this.nightTransitionReady) {
-      const gStore = golferStore.getState();
-      const activeGolfers = gStore.golfers.filter((g) => g.onCourse && g.state !== 'round_complete');
-      if (activeGolfers.length === 0) {
-        // All golfers finished — ready to transition
-        this.nightTransitionReady = true;
-        this.showDayTransitionModal();
-      }
-    }
-  }
-
-  /** Show the end-of-day transition overlay with summary */
-  private showDayTransitionModal(): void {
-    if (this.nightTransitionEl) return;
-
-    const store = courseStore.getState();
-    const netProfit = store.dailyRevenue - store.dailyExpenses;
-
-    // Build expense breakdown HTML from the categories tracked in the store
-    const breakdown = store.dailyExpenseBreakdown;
-    const categoryLabels: Record<string, string> = {
-      'terrain': 'Terrain Painting',
-      'buildings': 'Building Purchases',
-      'holes': 'Tee & Cup Placement',
-      'other': 'Other',
-    };
-    const categoryIcons: Record<string, string> = {
-      'terrain': '🖌️',
-      'buildings': '🏗️',
-      'holes': '⛳',
-      'other': '📋',
-    };
-    const breakdownLines = Object.entries(breakdown)
-      .sort((a, b) => b[1] - a[1]) // highest first
-      .map(([cat, amt]) => {
-        const label = categoryLabels[cat] || cat;
-        const icon = categoryIcons[cat] || '📋';
-        return `<div style="display: flex; justify-content: space-between; padding: 2px 0 2px 16px; font-size: 12px; color: #bbb;">
-          <span>${icon} ${label}</span>
-          <span style="color: #f87171;">-$${amt}</span>
-        </div>`;
-      })
-      .join('');
-
-    const el = document.createElement('div');
-    el.id = 'day-transition-modal';
-    el.style.cssText = `
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000;
-      background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center;
-      font-family: sans-serif;
-    `;
-
-    const box = document.createElement('div');
-    box.style.cssText = `
-      background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 12px;
-      padding: 32px 40px; max-width: 480px; width: 90%; text-align: center;
-      border: 1px solid #ffd700; color: #fff;
-      box-shadow: 0 0 30px rgba(255,215,0,0.15);
-    `;
-
-    box.innerHTML = `
-      <div style="font-size: 36px; margin-bottom: 8px;">🌙</div>
-      <div style="font-size: 20px; font-weight: bold; margin-bottom: 16px; color: #ffd700;">
-        Day ${store.dayCount} Complete
-      </div>
-      <div style="margin-bottom: 16px; line-height: 1.6; font-size: 14px;">
-        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-          <span style="color: #aaa;">⛳ Golfers Completed</span>
-          <span style="font-weight: bold;">${store.dailyGolfersCompleted}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-          <span style="color: #aaa;">💰 Greens Fees + Revenue</span>
-          <span style="color: #4ade80; font-weight: bold;">+$${store.dailyRevenue}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #333;">
-          <span style="color: #aaa;">🏗️ Expenses</span>
-          <span style="color: #f87171; font-weight: bold;">-$${store.dailyExpenses}</span>
-        </div>
-        ${Object.keys(breakdown).length > 0 ? breakdownLines : ''}
-        <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 16px;">
-          <span style="color: #ffd700;">📊 Net Profit</span>
-          <span style="font-weight: bold; color: ${netProfit >= 0 ? '#4ade80' : '#f87171'};">
-            ${netProfit >= 0 ? '+' : ''}$${netProfit}
-          </span>
-        </div>
-        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-          <span style="color: #aaa;">⭐ Reputation</span>
-          <span style="font-weight: bold; color: #ffd700;">${'★'.repeat(Math.round(store.reputation))}${'☆'.repeat(5 - Math.round(store.reputation))}</span>
-        </div>
-      </div>
-    `;
-
-    const continueBtn = document.createElement('button');
-    continueBtn.textContent = '▶ Continue to Next Day';
-    continueBtn.style.cssText = `
-      padding: 10px 24px; border-radius: 8px; border: 2px solid #ffd700;
-      background: rgba(255,215,0,0.15); color: #ffd700; font-size: 14px;
-      font-weight: bold; cursor: pointer; transition: background 0.2s;
-    `;
-    continueBtn.addEventListener('mouseenter', () => {
-      continueBtn.style.background = 'rgba(255,215,0,0.3)';
-    });
-    continueBtn.addEventListener('mouseleave', () => {
-      continueBtn.style.background = 'rgba(255,215,0,0.15)';
-    });
-    continueBtn.addEventListener('click', () => this.continueToNextDay());
-    box.appendChild(continueBtn);
-
-    el.appendChild(box);
-    document.body.appendChild(el);
-    this.nightTransitionEl = el;
-  }
-
-  /** Hide the day transition modal */
-  private hideNightTransitionModal(): void {
-    if (this.nightTransitionEl) {
-      this.nightTransitionEl.remove();
-      this.nightTransitionEl = null;
-    }
-  }
-
-  /** Advance to the next day — reset time, counters, re-enable spawning */
-  private continueToNextDay(): void {
-    const store = courseStore.getState();
-    store.resetDayCounters();
-    store.nextDay(); // resets to 6:00 AM, increments dayCount
-    this.isNightMode = false;
-    this.nightTransitionReady = false;
-    this.hideNightTransitionModal();
-
-    // Spawn initial golfers for the new day
-    this.spawnInitialGolfers();
-
-    this.showTemporaryMessage(`☀️ Day ${store.dayCount + 1} begins!`);
-  }
-
   private refreshHoleOverlays(): void {
     // Clear existing
     this.teeSprites.forEach((s) => s.destroy());
@@ -2396,17 +2162,17 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
     // Update spawn parameters based on current day phase
     this.updateSpawnParams(gameTimeMinutes);
 
-    // Night phase detection: if night and not already in transition, begin night mode
+    // Night phase detection via DayCycle
     if (!this.challenge.active) {
-      this.checkNightPhase(gameTimeMinutes);
+      this.dayCycle.update(gameTimeMinutes);
     }
 
-    // Building revenue tick + decor reputation bonuses
-    this.revenueTickTimer += scaledDelta;
-    if (this.revenueTickTimer >= this.REVENUE_TICK_INTERVAL) {
-      this.revenueTickTimer = 0;
-      this.processRevenueTick();
-      this.processDecorBonuses();
+    // Building revenue tick + decor reputation bonuses (via DayCycle)
+    this.dayCycle.revenueTickTimer += scaledDelta;
+    if (this.dayCycle.revenueTickTimer >= this.dayCycle.REVENUE_TICK_INTERVAL) {
+      this.dayCycle.revenueTickTimer = 0;
+      this.dayCycle.processRevenueTick(this.revenueIndicatorEl, () => this.updateMoneyDisplay());
+      this.dayCycle.processDecorBonuses(this.revenueIndicatorEl);
     }
 
     // Update ball flights (per-golfer, supports simultaneous swings)
@@ -2425,7 +2191,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost {
     const gStore = golferStore.getState();
     const activeCount = gStore.golfers.filter((g) => g.onCourse && g.state !== 'round_complete').length;
 
-    if (!this.isNightMode && activeCount < this.MIN_GOLFERS && this.spawnTimer >= this.SPAWN_INTERVAL) {
+    if (!this.dayCycle.isNightMode && activeCount < this.MIN_GOLFERS && this.spawnTimer >= this.SPAWN_INTERVAL) {
       this.spawnTimer = 0;
       const pair = this.spawnGolferPair();
       if (!pair) this.spawnGolfer();
