@@ -518,6 +518,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
           this.OFFSET_X, this.OFFSET_Y, 600, () => {});
         waterBall.sprite.setTexture('ball_player');
         waterBall.sprite.setDepth(9996);
+        waterBall.trailColor = 0xff6600;
         setTimeout(() => {
           waterBall.removeSprite();
           this.challenge.playerCol = result.returnCol;
@@ -546,6 +547,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
         );
         ball.sprite.setTexture('ball_player');
         ball.sprite.setScale(1.0);
+        ball.trailColor = 0xff6600;
         this.playerBall = ball;
         break;
       }
