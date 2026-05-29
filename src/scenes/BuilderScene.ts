@@ -112,6 +112,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   private tracerGraphics: Phaser.GameObjects.Graphics[] = [];
   private readonly TRACER_FADE_DURATION = GAME_CONFIG.TRACER_FADE_DURATION;
 
+  // Water shimmer animation
+  private waterShimmerGraphics: Phaser.GameObjects.Graphics | null = null;
+  private cachedWaterPositions: Array<{ x: number; y: number; depth: number }> = [];
+  private waterShimmerTime = 0;
+
   // Landing ball markers (persistent sprites at landing positions)
   private landingBallSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
 
@@ -637,11 +642,24 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
         if (tile.vegetation) {
           this.addVegetationOverlay(col, row, pos, tile.vegetation);
         }
+
+        // Cache water tile positions for shimmer animation
+        if (tile.type === 'water') {
+          const depth = (col + row) * GRID_COLS + col + tile.height * 2 + 0.1;
+          this.cachedWaterPositions.push({ x: pos.x, y: pos.y, depth });
+        }
       }
     }
 
     // Render buildings from the course store
     this.renderAllBuildings();
+
+    // Create water shimmer overlay graphics
+    this.waterShimmerGraphics = this.add.graphics();
+    this.waterShimmerGraphics.setDepth(10000);
+
+    // Build initial water shimmer onto the graphics
+    this.renderWaterShimmer(0);
   }
 
   private addVegetationOverlay(
@@ -2076,6 +2094,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
           this.playerBall = null;
         }
       }
+      // Water shimmer continues even when paused
+      this.waterShimmerTime += delta;
+      if (this.waterShimmerTime > 0) {
+        this.renderWaterShimmer(this.waterShimmerTime);
+      }
       return;
     }
 
@@ -2167,6 +2190,12 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     // Update UI
     this.updateScorecard();
     this.updateGolferCount();
+
+    // Water shimmer animation — subtle ripple across water tiles
+    this.waterShimmerTime += scaledDelta;
+    if (this.waterShimmerTime > 0) {
+      this.renderWaterShimmer(this.waterShimmerTime);
+    }
 
     // Camera auto-follow — track the most active golfer
     if (this.autoFollow) {
@@ -2971,6 +3000,53 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   }
 
   /**
+   * Render the water shimmer animation — draws subtle white highlight arcs
+   * across water tiles using a sine wave for a gentle ripple/shine effect.
+   * Called every frame during update.
+   */
+  private renderWaterShimmer(gameMs: number): void {
+    if (!this.waterShimmerGraphics || this.cachedWaterPositions.length === 0) return;
+
+    const gfx = this.waterShimmerGraphics;
+    gfx.clear();
+
+    // Phase wave that travels across the course over time
+    // Creates a diagonal sweep effect: shimmer moves from top-left to bottom-right
+    const shimmerPhase = (gameMs * 0.0003) % (Math.PI * 2);
+    const highlightAlpha = 0.12 + Math.sin(shimmerPhase) * 0.08;
+
+    // Only render when alpha is above threshold — shimmers come and go
+    if (highlightAlpha <= 0.05) return;
+
+    // Draw a subtle white diamond arc on each water tile
+    // Using a secondary slower phase for a gentle oscillation
+    const subPhase = (gameMs * 0.00015) % (Math.PI * 2);
+
+    for (const pos of this.cachedWaterPositions) {
+      // Per-tile micro-shimmer offset — creates rippling effect
+      const tilePhase = Math.sin(pos.x * 0.04 + pos.y * 0.04 + subPhase);
+      const alpha = Math.max(0.04, highlightAlpha * (0.5 + tilePhase * 0.5));
+
+      // Draw a thin arc across the center of the tile (simulating light reflecting off water)
+      gfx.lineStyle(2, 0xffffff, alpha);
+      gfx.beginPath();
+      gfx.moveTo(pos.x - 12, pos.y - 2);
+      gfx.lineTo(pos.x - 4, pos.y - 6);
+      gfx.lineTo(pos.x + 4, pos.y - 2);
+      gfx.lineTo(pos.x + 12, pos.y - 6);
+      gfx.strokePath();
+
+      // Second highlight line below, slightly offset — gives depth
+      gfx.lineStyle(1, 0x87ceeb, alpha * 0.6);
+      gfx.beginPath();
+      gfx.moveTo(pos.x - 8, pos.y + 2);
+      gfx.lineTo(pos.x, pos.y - 1);
+      gfx.lineTo(pos.x + 8, pos.y + 2);
+      gfx.strokePath();
+    }
+  }
+
+  /**
    * Show a floating popup over the golfer with a happiness emoji (based on
    * score vs par) and the greens fee earned. Fades out after ~2.5s.
    */
@@ -3251,6 +3327,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.landingBallSprites.clear();
     this.tracerGraphics.forEach((g) => g.destroy());
     this.tracerGraphics = [];
+    if (this.waterShimmerGraphics) {
+      this.waterShimmerGraphics.destroy();
+      this.waterShimmerGraphics = null;
+    }
+    this.cachedWaterPositions = [];
     this.hideVegetationSidePanel();
     this.hideGolferTooltip();
     this.hideBuildingTooltip();
