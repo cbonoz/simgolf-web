@@ -56,6 +56,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   private teeSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private flagSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private vegetationOverlaySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  private treeShadowGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private treeClusterSprites: Map<string, Phaser.GameObjects.Sprite[]> = new Map();
   private selectedVegetation: string = VEGETATION_TYPES[0].key;
   private vegetationPickerContainer!: HTMLDivElement;
   private vegetationSidePanel: HTMLDivElement | null = null;
@@ -676,6 +678,48 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     plant.setScale(0.55);
     plant.setDepth((col + row) * GRID_COLS + col + 0.5);
     this.vegetationOverlaySprites.set(key, plant);
+
+    // --- Tree shadow ---
+    // Draw a dark elliptical shadow beneath the tree sprite
+    const shadowG = this.add.graphics();
+    const shadowAlpha = 0.2;
+    const shadowOffsetX = 6;
+    const shadowOffsetY = 4;
+    shadowG.fillStyle(0x000000, shadowAlpha);
+    shadowG.fillEllipse(pos.x + shadowOffsetX, pos.y, 18, 8);
+    shadowG.setDepth((col + row) * GRID_COLS + col + 0.1);
+    this.treeShadowGraphics.set(key, shadowG);
+
+    // --- Tree clustering ---
+    // On tree tiles, scatter 1-3 smaller plants (bushes, shrubs, grasses) around the main sprite
+    const clusterSprites: Phaser.GameObjects.Sprite[] = [];
+    const vegCategory = VEGETATION_TYPES.find((v) => v.key === vegetationKey)?.category ?? '';
+    // Only cluster on Tree/Pine/Palm tiles (not bushes/grasses acting as standalone)
+    if (['Tree', 'Pine', 'Palm', 'Tropical', 'Bamboo'].includes(vegCategory)) {
+      // Find small vegetation that can serve as undergrowth
+      const undergrowth = VEGETATION_TYPES.filter(
+        (v) => ['Bush', 'Shrub', 'Grass'].includes(v.category)
+      );
+      const clusterCount = 1 + Math.floor(Math.random() * 3); // 1-3 cluster sprites
+
+      for (let i = 0; i < clusterCount; i++) {
+        const randVeg = undergrowth[Math.floor(Math.random() * undergrowth.length)];
+        if (!randVeg) continue;
+
+        // Scatter around the main tree position
+        const angle = (Math.PI * 2 * i) / clusterCount + (Math.random() - 0.5) * 0.8;
+        const dist = 8 + Math.random() * 12;
+        const cx = pos.x + Math.cos(angle) * dist;
+        const cy = pos.y + Math.sin(angle) * dist - 2;
+
+        const clusterSprite = this.add.sprite(cx, cy - 4, randVeg.key);
+        clusterSprite.setOrigin(0.5, 1);
+        clusterSprite.setScale(0.35 + Math.random() * 0.2);
+        clusterSprite.setDepth((col + row) * GRID_COLS + col + 0.3);
+        clusterSprites.push(clusterSprite);
+      }
+    }
+    this.treeClusterSprites.set(key, clusterSprites);
   }
 
   private removeVegetationOverlay(col: number, row: number): void {
@@ -684,6 +728,22 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     if (sprite) {
       sprite.destroy();
       this.vegetationOverlaySprites.delete(key);
+    }
+
+    // Clean up shadow graphics
+    const shadowG = this.treeShadowGraphics.get(key);
+    if (shadowG) {
+      shadowG.destroy();
+      this.treeShadowGraphics.delete(key);
+    }
+
+    // Clean up cluster sprites
+    const clusters = this.treeClusterSprites.get(key);
+    if (clusters) {
+      for (const cs of clusters) {
+        cs.destroy();
+      }
+      this.treeClusterSprites.delete(key);
     }
   }
 
@@ -3315,6 +3375,12 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.flagSprites.clear();
     this.vegetationOverlaySprites.forEach((s) => s.destroy());
     this.vegetationOverlaySprites.clear();
+    this.treeShadowGraphics.forEach((g) => g.destroy());
+    this.treeShadowGraphics.clear();
+    this.treeClusterSprites.forEach((clusters) => {
+      for (const cs of clusters) cs.destroy();
+    });
+    this.treeClusterSprites.clear();
     this.slopeTileSprites.forEach((g) => g.destroy());
     this.slopeTileSprites = [];
     this.buildingSprites.forEach((s) => s.destroy());
