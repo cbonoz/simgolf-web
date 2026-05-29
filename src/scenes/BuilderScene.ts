@@ -8,6 +8,7 @@ import { Ball } from '../entities/Ball';
 import { MusicScene } from './MusicScene';
 import { ChallengeMode, ChallengeHost, type ChallengeResultData, type SwingResult } from '../systems/ChallengeMode';
 import { DayCycle, type DayCycleHost } from '../systems/DayCycle';
+import { SceneUI, type SceneUIHost } from '../systems/SceneUI';
 
 type CourseSnapshot = {
   grid: Tile[][];
@@ -15,7 +16,7 @@ type CourseSnapshot = {
   money: number;
 };
 
-export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycleHost {
+export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycleHost, SceneUIHost {
   private tileSprites: Phaser.GameObjects.Sprite[][] = [];
   private cursor!: Phaser.GameObjects.Sprite;
   private debugText!: Phaser.GameObjects.Text;
@@ -39,13 +40,15 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   // Day/night cycle + economy — extracted to DayCycle module
   private dayCycle = new DayCycle(this);
 
+  // Scene UI (golfer panel) — extracted to SceneUI module
+  private sceneUI = new SceneUI(this);
+
   // Challenge rendering state (Phaser-side — managed by host methods)
   private aimLine: Phaser.GameObjects.Graphics | null = null;
   private powerBar: HTMLDivElement | null = null;
   private playerMarker: Phaser.GameObjects.Sprite | null = null;
   private playerBall: Ball | null = null;
   private lastPlayerBallSprite: Phaser.GameObjects.Sprite | null = null;
-  private challengeBtn: HTMLButtonElement | null = null;
 
   // Hole mode
   private builderMode: 'paint' | 'hole' | 'height' | 'buildings' | 'none' = 'paint';
@@ -73,14 +76,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   private MAX_GOLFERS: number = GAME_CONFIG.MAX_GOLFERS;
   private MIN_GOLFERS: number = GAME_CONFIG.MIN_GOLFERS;
   private timeScale = 1;
-  private scorecardEl!: HTMLDivElement;
-  private courseRecordEl!: HTMLDivElement;
-  private courseAvgEl!: HTMLDivElement;
-  private timeControlsContainer!: HTMLDivElement;
   private golferTooltip: HTMLDivElement | null = null;
-  private golferCountDisplay!: HTMLDivElement;
-  private clockEl!: HTMLDivElement;
   private playActive = true; // golfers active by default
+
+  // Camera auto-follow toggle
+  private autoFollow = false;
 
   // Undo/redo
   private undoStack: CourseSnapshot[] = [];
@@ -315,6 +315,19 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.showSpawnInitialGolfers();
   }
 
+  // === SCENE UI HOST IMPLEMENTATION ===
+
+  /** Called when SceneUI time speed buttons are clicked */
+  onTimeScaleChanged(scale: number): void {
+    this.timeScale = scale;
+    this.playActive = scale > 0;
+  }
+
+  /** Called when SceneUI challenge button is clicked */
+  onChallengeClicked(): void {
+    this.startChallenge();
+  }
+
   // === CHALLENGE MODE ===
 
   private startChallenge(): void {
@@ -339,7 +352,6 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
 
   // ChallengeHost: create the player marker sprite + pulsing tween
   onChallengeStarted(col: number, row: number): void {
-    this.challengeBtn!.textContent = '⏹️ End Challenge';
     this.terrainPalette.style.display = 'none';
   }
 
@@ -361,7 +373,6 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
 
   // ChallengeHost: restore builder UI after challenge ends
   onChallengeEnded(): void {
-    this.challengeBtn!.textContent = '🎮 Start Challenge';
     if (this.aimLine) { this.aimLine.destroy(); this.aimLine = null; }
     if (this.powerBar) { this.powerBar.remove(); this.powerBar = null; }
     if (this.playerMarker) { this.playerMarker.destroy(); this.playerMarker = null; }
@@ -388,6 +399,15 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       duration: 400,
       ease: 'Sine.easeInOut',
     });
+  }
+
+  // SceneUIHost: auto-follow camera toggle
+  isAutoFollowEnabled(): boolean {
+    return this.autoFollow;
+  }
+
+  onToggleAutoFollow(): void {
+    this.autoFollow = !this.autoFollow;
   }
 
   // ChallengeHost: play SFX
@@ -1606,96 +1626,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     });
     this.terrainPalette.appendChild(returnBtn);
 
-    // Time controls + golfer info (unified build+play)
-    const playSection = document.createElement('div');
-    playSection.id = 'golfer-panel';
-    playSection.style.cssText = `
-      position: fixed; top: 55px; right: 10px; z-index: 100;
-      background: rgba(0,0,0,0.85); border-radius: 8px; padding: 12px;
-      display: flex; flex-direction: column; gap: 6px; font-family: sans-serif;
-      min-width: 180px;
-    `;
-
-    const playTitle = document.createElement('div');
-    playTitle.textContent = '⛳ Golfers';
-    playTitle.style.cssText = 'color: #fff; font-weight: bold; font-size: 13px;';
-    playSection.appendChild(playTitle);
-
-    // Clock display
-    this.clockEl = document.createElement('div');
-    this.clockEl.style.cssText = 'color: #ffd700; font-size: 14px; font-weight: bold; text-align: center; padding: 4px 0;';
-    this.clockEl.textContent = '6:00 AM - Day 1';
-    playSection.appendChild(this.clockEl);
-
-    // Time controls
-    this.timeControlsContainer = document.createElement('div');
-    this.timeControlsContainer.style.cssText = 'display: flex; gap: 4px;';
-
-    const speeds = [
-      { label: '⏸️', value: 0 },
-      { label: '▶️', value: 1 },
-      { label: '⏩', value: 2 },
-      { label: '⏩⏩', value: 5 },
-    ];
-
-    for (const s of speeds) {
-      const btn = document.createElement('button');
-      btn.textContent = s.label;
-      btn.dataset.speed = String(s.value);
-      btn.style.cssText = `
-        flex: 1; padding: 4px; border: 2px solid transparent; border-radius: 4px;
-        cursor: pointer; font-size: 12px; background: ${s.value === 1 ? '#4a8f3f' : '#444'};
-        color: #fff;
-      `;
-      btn.addEventListener('click', () => {
-        this.timeScale = s.value;
-        this.playActive = s.value > 0;
-        // Update all time buttons
-        const buttons = this.timeControlsContainer.querySelectorAll('button');
-        buttons.forEach((b) => {
-          const speedVal = Number((b as HTMLButtonElement).dataset.speed);
-          (b as HTMLButtonElement).style.background = speedVal === this.timeScale ? '#4a8f3f' : '#444';
-        });
-      });
-      this.timeControlsContainer.appendChild(btn);
-    }
-    playSection.appendChild(this.timeControlsContainer);
-
-    // Golfer count display
-    this.golferCountDisplay = document.createElement('div');
-    this.golferCountDisplay.style.cssText = 'color: #a8d8a8; font-size: 11px;';
-    this.golferCountDisplay.textContent = '0 golfers on course';
-    playSection.appendChild(this.golferCountDisplay);
-
-    // Course record display
-    this.courseRecordEl = document.createElement('div');
-    this.courseRecordEl.style.cssText = 'color: #ffd700; font-size: 11px; margin-top: 2px;';
-    this.courseRecordEl.textContent = '';
-    playSection.appendChild(this.courseRecordEl);
-
-    // Course par + average display
-    this.courseAvgEl = document.createElement('div');
-    this.courseAvgEl.style.cssText = 'color: #aaa; font-size: 10px; margin-top: 1px;';
-    this.courseAvgEl.textContent = '';
-    playSection.appendChild(this.courseAvgEl);
-
-    // Scorecard
-    this.scorecardEl = document.createElement('div');
-    this.scorecardEl.style.cssText = 'color: #ccc; font-size: 10px; line-height: 1.4; max-height: 180px; overflow-y: auto;';
-    playSection.appendChild(this.scorecardEl);
-
-    // Challenge Mode button
-    this.challengeBtn = document.createElement('button');
-    this.challengeBtn.textContent = '🎮 Start Challenge';
-    this.challengeBtn.style.cssText = `
-      margin-top: 6px; padding: 8px; border: 2px solid #e67e22; border-radius: 6px;
-      cursor: pointer; font-size: 12px; background: #5a3a1a; color: #f0c27a;
-      font-weight: bold; width: 100%;
-    `;
-    this.challengeBtn.addEventListener('click', () => this.startChallenge());
-    playSection.appendChild(this.challengeBtn);
-
-    document.body.appendChild(playSection);
+    // Golfer panel — extracted to SceneUI module
+    this.sceneUI.create();
 
     // Download Save button
     const downloadBtn = document.createElement('button');
@@ -2157,9 +2089,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       }
     }
 
-    // Update clock display
+    // Update clock display via SceneUI
     const { gameTimeMinutes, dayCount } = courseStore.getState();
-    this.clockEl.textContent = `${this.formatGameTimeDisplay(gameTimeMinutes)} - Day ${dayCount}`;
+    this.sceneUI.updateClock(gameTimeMinutes, dayCount);
 
     // Update spawn parameters based on current day phase
     this.updateSpawnParams(gameTimeMinutes);
@@ -2235,6 +2167,62 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     // Update UI
     this.updateScorecard();
     this.updateGolferCount();
+
+    // Camera auto-follow — track the most active golfer
+    if (this.autoFollow) {
+      const cam = this.cameras.main;
+      let targetPos: { x: number; y: number } | null = null;
+      let isBallFlight = false;
+
+      if (this.challenge.active) {
+        // In challenge mode, follow the player marker/ball
+        if (this.playerBall && !this.playerBall.complete && this.playerBall.sprite) {
+          targetPos = { x: this.playerBall.sprite.x, y: this.playerBall.sprite.y };
+          isBallFlight = true;
+        } else if (this.playerMarker) {
+          targetPos = { x: this.playerMarker.x, y: this.playerMarker.y };
+        }
+      } else {
+        // Free play: find the most active AI golfer
+        const gStore = golferStore.getState();
+        const activeGolfers = gStore.golfers.filter(
+          (g) => g.onCourse && g.state !== 'round_complete'
+        );
+        // Priority: ball_flight > swinging > walking > addressing > reacting > hole_complete
+        const priority: Record<string, number> = {
+          ball_flight: 5,
+          swinging: 4,
+          walking: 3,
+          addressing: 2,
+          reacting: 1,
+          hole_complete: 0,
+        };
+        let best = activeGolfers[0];
+        let bestScore = -1;
+        for (const g of activeGolfers) {
+          const score = priority[g.state] ?? -1;
+          if (score > bestScore) {
+            bestScore = score;
+            best = g;
+          }
+        }
+        if (best) {
+          const pos = this.tileToWorld(best.tilePos.col, best.tilePos.row);
+          targetPos = { x: pos.x, y: pos.y };
+          isBallFlight = best.state === 'ball_flight';
+        }
+      }
+
+      if (targetPos) {
+        const targetX = targetPos.x - cam.width / 2;
+        const targetY = targetPos.y - cam.height / 2;
+        const lerpSpeed = isBallFlight ? 0.06 : 0.03;
+        cam.scrollX += (targetX - cam.scrollX) * lerpSpeed;
+        cam.scrollY += (targetY - cam.scrollY) * lerpSpeed;
+        if (Math.abs(cam.scrollX - targetX) < 1) cam.scrollX = targetX;
+        if (Math.abs(cam.scrollY - targetY) < 1) cam.scrollY = targetY;
+      }
+    }
   }
 
   private syncGolferSprites(): void {
@@ -2283,124 +2271,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   }
 
   private updateScorecard(): void {
-    const gStore = golferStore.getState();
-    const store = courseStore.getState();
-    if (gStore.golfers.length === 0) {
-      this.scorecardEl.innerHTML = '<em>No golfers on course</em>';
-      return;
-    }
-
-    const GOLFER_COLORS = ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#e67e22', '#9b59b6', '#1abc9c', '#e84393'];
-
-    let html = '<table style="border-collapse:collapse;width:100%;font-size:10px;">';
-
-    // Header
-    html += '<tr style="border-bottom:1px solid #555;">';
-    html += '<th style="text-align:left;padding:1px 3px;">Golfer</th>';
-    html += '<th style="text-align:left;padding:1px 3px;">Hole</th>';
-    html += '<th style="text-align:left;padding:1px 3px;">Ths</th>';
-    html += '<th style="text-align:left;padding:1px 3px;">Tot</th>';
-    html += '<th style="text-align:left;padding:1px 3px;">±Par</th>';
-    html += '</tr>';
-
-    for (const g of gStore.golfers) {
-      const color = GOLFER_COLORS[g.colorIndex % GOLFER_COLORS.length];
-      const holeLabel = g.currentHole <= 9 ? `H${g.currentHole}` : 'Done';
-
-      // Calculate score vs par for current hole
-      const hole = store.holes.find((h) => h.id === g.currentHole);
-      const holePar = hole?.par ?? 3;
-
-      // Calculate total vs par from completed holes
-      let totalVsPar = 0;
-      for (let i = 0; i < g.scorecard.length; i++) {
-        const h = store.holes.find((h) => h.id === i + 1);
-        totalVsPar += g.scorecard[i] - (h?.par ?? 3);
-      }
-
-      // This hole vs par (if completed)
-      let holeVsParStr = '';
-      let holeVsParColor = '#ccc';
-      if (g.state === 'hole_complete' || g.state === 'round_complete') {
-        const diff = g.strokes - holePar;
-        holeVsParStr = formatVsPar(diff);
-        holeVsParColor = vsParColor(diff);
-      } else if (g.strokes > 0) {
-        // In progress — show projected vs par
-        const diff = g.strokes - holePar;
-        holeVsParStr = g.strokes > holePar ? `+${g.strokes - holePar}` : `${g.strokes - holePar}`;
-        holeVsParColor = vsParColor(diff);
-      }
-
-      // Total vs par string
-      const totalVsParStr = formatVsPar(totalVsPar);
-      const totalVsParColor = vsParColor(totalVsPar);
-
-      // Golfer name with color dot
-      const nameShort = g.name.length > 12 ? g.name.slice(0, 11) + '…' : g.name;
-
-      html += '<tr style="border-bottom:1px solid #333;">';
-      html += `<td style="padding:1px 3px;"><span style="color:${color};">●</span> ${nameShort}</td>`;
-      html += `<td style="padding:1px 3px;">${holeLabel}</td>`;
-      html += `<td style="padding:1px 3px;">${g.strokes}</td>`;
-      html += `<td style="padding:1px 3px;">${g.totalStrokes}</td>`;
-      html += `<td style="padding:1px 3px;color:${totalVsParColor};font-weight:bold;">${totalVsParStr}</td>`;
-      html += '</tr>';
-
-      // Show completed hole scores inline if they have a scorecard
-      if (g.scorecard.length > 0) {
-        let scoresStr = '';
-        for (let i = 0; i < g.scorecard.length; i++) {
-          const h = store.holes.find((h) => h.id === i + 1);
-          const sPar = h?.par ?? 3;
-          const sDiff = g.scorecard[i] - sPar;
-          const sColor = vsParColor(sDiff);
-          const label = formatVsPar(sDiff);
-          scoresStr += `<span style="color:${sColor};">H${i + 1}:${g.scorecard[i]}${label !== 'E' ? label : ''}</span> `;
-        }
-        html += `<tr><td colspan="5" style="padding:0 3px 2px 3px;font-size:9px;color:#999;line-height:1.4;">${scoresStr}</td></tr>`;
-      }
-
-      // Show thought bubble
-      const thought = generateThought(g, store.grid, store.holes);
-      html += `<tr><td colspan="5" style="padding:0 3px 3px 3px;font-size:8px;color:#777;font-style:italic;">💭 ${thought}</td></tr>`;
-    }
-
-    html += '</table>';
-    this.scorecardEl.innerHTML = html;
+    this.sceneUI.updateScorecard();
   }
 
   private updateGolferCount(): void {
-    const gStore = golferStore.getState();
-    const active = gStore.golfers.filter((g) => g.onCourse && g.state !== 'round_complete').length;
-    this.golferCountDisplay.textContent = `${active} golfer${active !== 1 ? 's' : ''} on course`;
-
-    // Update course record display
-    const store = courseStore.getState();
-    if (store.courseRecord !== null && store.courseRecordDate && store.courseRecordPar !== null) {
-      const date = new Date(store.courseRecordDate);
-      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const vsPar = store.courseRecord - store.courseRecordPar;
-      const parStr = vsPar <= 0 ? `${vsPar}` : `+${vsPar}`;
-      this.courseRecordEl.textContent = `🏆 Course Record: ${parStr} (Par: ${store.courseRecordPar}) — ${dateStr}`;
-    } else {
-      this.courseRecordEl.textContent = '';
-    }
-
-    // Course par + average
-    const coursePar = totalCoursePar(store.holes);
-    const numHoles = countConfiguredHoles(store.holes);
-    if (numHoles > 0) {
-      const scores = store.completedScores;
-      if (scores.length > 0) {
-        const avg = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
-        this.courseAvgEl.textContent = `Par ${coursePar} · Avg: ${avg.toFixed(1)} (${scores.length} rounds)`;
-      } else {
-        this.courseAvgEl.textContent = `Par ${coursePar} (${numHoles} holes)`;
-      }
-    } else {
-      this.courseAvgEl.textContent = '';
-    }
+    this.sceneUI.updateGolferCount();
   }
 
   // === GOLFER CLICK INSPECT ===
@@ -3381,7 +3256,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.hideBuildingTooltip();
     this.hideHoleTooltip();
     this.terrainPalette?.remove();
-    document.getElementById('golfer-panel')?.remove();
+    this.sceneUI.cleanup();
     document.getElementById('music-player')?.remove();
     this.moneyDisplay?.remove();
     this.revenueIndicatorEl?.remove();
