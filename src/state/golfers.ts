@@ -185,11 +185,19 @@ export function generateThought(golfer: Golfer, grid?: Tile[][], holes?: HoleCon
   return 'Nice course layout.';
 }
 
+export type BodyType = 'slim' | 'average' | 'broad';
+export type Accessory = 'none' | 'glasses' | 'visor' | 'mustache';
+
+export const BODY_TYPES: BodyType[] = ['slim', 'average', 'broad'];
+export const ACCESSORIES: Accessory[] = ['none', 'glasses', 'visor', 'mustache'];
+
 export interface Golfer {
   id: number;
   name: string;
   skill: number; // 0.3 - 0.9 (overall skill)
-  colorIndex: number; // 0-4 for sprite variation
+  colorIndex: number; // 0-7 for sprite variation
+  bodyType: BodyType; // slim/average/broad — affects sprite shape
+  accessory: Accessory; // visual accessory overlay
   currentHole: number; // 1-9
   tilePos: { col: number; row: number };
   previousTilePos: { col: number; row: number } | null;
@@ -233,7 +241,9 @@ export const golferStore = createStore<GolferStoreState>()((set, get) => ({
       id: state.nextId,
       name: generateName(),
       skill: Math.round(skill * 100) / 100,
-      colorIndex: Math.floor(Math.random() * 5),
+      colorIndex: Math.floor(Math.random() * 8),
+      bodyType: BODY_TYPES[Math.floor(Math.random() * BODY_TYPES.length)],
+      accessory: ACCESSORIES[Math.floor(Math.random() * ACCESSORIES.length)],
       currentHole: 1,
       tilePos: { col: startCol, row: startRow },
       previousTilePos: null,

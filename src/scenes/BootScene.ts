@@ -294,6 +294,7 @@ export class BootScene extends Phaser.Scene {
 
   private generateEntityTextures(): void {
     // Golfer icons — humanoid shapes with shirt + pants + hat
+    // 3 body types × 8 color palettes = 24 distinct golfer textures
     const golferPalettes = [
       { shirt: 0xe74c3c, pants: 0xffffff, hat: 0xe74c3c }, // Red
       { shirt: 0x3498db, pants: 0xffffff, hat: 0x3498db }, // Blue
@@ -305,40 +306,88 @@ export class BootScene extends Phaser.Scene {
       { shirt: 0xe91e63, pants: 0xffffff, hat: 0xe91e63 }, // Pink
     ];
 
-    golferPalettes.forEach((palette, i) => {
-      const g = this.add.graphics();
-      const w = 14;
-      const h = 20;
+    // Body shape definitions: name, and proportions relative to base (14w x 20h)
+    // slim: narrower body, taller — lanky look
+    // average: standard proportions
+    // broad: wider body, shorter — stocky look
+    type BodyDef = { bodyW: number; bodyH: number; bodyOffX: number; bodyOffY: number; pantsOffX: number; pantsW: number; legOffX: number; scale: number };
+    const bodyDefs: Record<string, BodyDef> = {
+      slim:    { bodyW: 8,  bodyH: 9,  bodyOffX: 3,  bodyOffY: 6, pantsOffX: 4,  pantsW: 6,  legOffX: 4,  scale: 0.85 },
+      average: { bodyW: 10, bodyH: 8,  bodyOffX: 2,  bodyOffY: 6, pantsOffX: 3,  pantsW: 8,  legOffX: 3,  scale: 1.0 },
+      broad:   { bodyW: 12, bodyH: 7,  bodyOffX: 1,  bodyOffY: 6, pantsOffX: 2,  pantsW: 10, legOffX: 2,  scale: 1.1 },
+    };
 
-      // Body (shirt) — rounded rectangle
-      g.fillStyle(palette.shirt, 1);
-      g.fillRoundedRect(2, 6, w - 4, 8, 2);
+    golferPalettes.forEach((palette, colorIdx) => {
+      for (const [bodyKey, def] of Object.entries(bodyDefs)) {
+        const g = this.add.graphics();
+        const w = 14;
+        const h = 20;
+        const sc = def.scale;
 
-      // Head
-      g.fillStyle(0xffdbac, 1); // skin tone
-      g.fillCircle(w / 2, 5, 3);
+        // Shadow
+        g.fillStyle(0x000000, 0.15);
+        g.fillEllipse(w / 2, h - 1, w * sc - 2, 3);
 
-      // Hat
-      g.fillStyle(palette.hat, 1);
-      g.fillRoundedRect(1, 1, w - 2, 3, 1);
-      g.fillRect(0, 3, w, 1);
+        // Body (shirt)
+        g.fillStyle(palette.shirt, 1);
+        g.fillRoundedRect(def.bodyOffX, def.bodyOffY, def.bodyW, def.bodyH, 2);
 
-      // Pants
-      g.fillStyle(palette.pants, 1);
-      g.fillRoundedRect(3, 12, w - 6, 6, 1);
+        // Head
+        const headCX = Math.round(w / 2);
+        const headR = Math.round(3 * sc);
+        g.fillStyle(0xffdbac, 1); // skin tone
+        g.fillCircle(headCX, 5, headR);
 
-      // Shoes
-      g.fillStyle(0x333333, 1);
-      g.fillRect(3, 18, 3, 2);
-      g.fillRect(w - 6, 18, 3, 2);
+        // Hat
+        g.fillStyle(palette.hat, 1);
+        const hatW = Math.round(w * sc);
+        const hatOffX = Math.round((w - hatW) / 2);
+        g.fillRoundedRect(hatOffX, 1, hatW, 3, 1);
+        g.fillRect(0, 3, w, 1);
 
-      // Shadow
-      g.fillStyle(0x000000, 0.15);
-      g.fillEllipse(w / 2, h - 1, w - 2, 3);
+        // Pants
+        g.fillStyle(palette.pants, 1);
+        g.fillRoundedRect(def.pantsOffX, 12, def.pantsW, 6, 1);
 
-      g.generateTexture(`golfer_${i}`, w, h + 2);
-      g.destroy();
+        // Shoes
+        g.fillStyle(0x333333, 1);
+        g.fillRect(def.legOffX, 18, 3, 2);
+        g.fillRect(w - def.legOffX - 3, 18, 3, 2);
+
+        g.generateTexture(`golfer_${colorIdx}_${bodyKey}`, w, h + 2);
+        g.destroy();
+      }
     });
+
+    // Accessory overlays — separate small textures rendered on top of golfer sprites
+    const accessG = this.add.graphics();
+
+    // Glasses overlay (14x8, placed at head area)
+    accessG.clear();
+    accessG.lineStyle(1, 0x333333, 0.9);
+    accessG.strokeRect(2, 3, 4, 3);  // left lens
+    accessG.strokeRect(8, 3, 4, 3);  // right lens
+    accessG.lineBetween(6, 4, 8, 4); // bridge
+    accessG.generateTexture('accessory_glasses', 14, 8);
+    accessG.clear();
+
+    // Visor overlay (14x6, placed at top of head)
+    accessG.fillStyle(0x333333, 0.8);
+    accessG.fillRoundedRect(0, 1, 14, 3, 1);
+    accessG.fillRect(0, 3, 14, 1);
+    accessG.generateTexture('accessory_visor', 14, 6);
+    accessG.clear();
+
+    // Mustache overlay (14x5, placed below nose)
+    accessG.lineStyle(2, 0x333333, 0.9);
+    accessG.beginPath();
+    accessG.moveTo(3, 2);
+    accessG.lineTo(7, 3);
+    accessG.lineTo(11, 2);
+    accessG.strokePath();
+    accessG.generateTexture('accessory_mustache', 14, 5);
+
+    accessG.destroy();
 
     // Ball (tiny white circle)
     const ballG = this.add.graphics();

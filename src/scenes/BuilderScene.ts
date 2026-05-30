@@ -72,6 +72,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
 
   // Golfers (unified build+play)
   private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
+  private accessorySprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
   private activeBalls: Map<number, Ball> = new Map();
   private spawnTimer = 0;
   private SPAWN_INTERVAL: number = GAME_CONFIG.SPAWN_INTERVAL;
@@ -231,16 +232,10 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     const posA = this.tileToWorld(golferA.tilePos.col, golferA.tilePos.row);
     const posB = this.tileToWorld(golferB.tilePos.col, golferB.tilePos.row);
 
-    const spriteA = this.add.sprite(posA.x - 3, posA.y - 4, `golfer_${golferA.colorIndex}`);
-    spriteA.setOrigin(0.5, 1);
-    spriteA.setScale(1.0);
-    spriteA.setDepth(this.getGolferDepth(golferA.tilePos.col, golferA.tilePos.row));
+    const spriteA = this.createGolferSprite(golferA, posA.x - 3, posA.y - 4);
     this.golferSprites.set(golferA.id, spriteA);
 
-    const spriteB = this.add.sprite(posB.x + 3, posB.y - 4, `golfer_${golferB.colorIndex}`);
-    spriteB.setOrigin(0.5, 1);
-    spriteB.setScale(1.0);
-    spriteB.setDepth(this.getGolferDepth(golferB.tilePos.col, golferB.tilePos.row));
+    const spriteB = this.createGolferSprite(golferB, posB.x + 3, posB.y - 4);
     this.golferSprites.set(golferB.id, spriteB);
 
     return [golferA, golferB];
@@ -267,10 +262,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     });
 
     const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
-    const sprite = this.add.sprite(pos.x, pos.y - 4, `golfer_${golfer.colorIndex}`);
-    sprite.setOrigin(0.5, 1);
+    const sprite = this.createGolferSprite(golfer, pos.x, pos.y - 4);
     sprite.setScale(0.9); // Slightly smaller than pair sprites
-    sprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row));
     this.golferSprites.set(golfer.id, sprite);
 
     return golfer;
@@ -278,6 +271,33 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
 
   private getGolferDepth(col: number, row: number): number {
     return (col + row) * GRID_COLS + col + 0.5;
+  }
+
+  /**
+   * Create a golfer body sprite + accessory overlay (glasses, visor, mustache).
+   * Returns the body sprite; the overlay is stored in accessorySprites by golfer id.
+   */
+  private createGolferSprite(golfer: Golfer, x: number, y: number): Phaser.GameObjects.Sprite {
+    const bodyKey = golfer.bodyType || 'average';
+    const sprite = this.add.sprite(x, y, `golfer_${golfer.colorIndex}_${bodyKey}`);
+    sprite.setOrigin(0.5, 1);
+    sprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row));
+
+    // Accessory overlay
+    const acc = golfer.accessory || 'none';
+    if (acc !== 'none') {
+      const accKey = `accessory_${acc}`;
+      if (this.textures.exists(accKey)) {
+        // Position accessory slightly above body sprite's head (body sprite origin is bottom)
+        const accY = y - 20; // golfer texture is 20px tall, so overlay goes at the top
+        const accSprite = this.add.sprite(x, accY, accKey);
+        accSprite.setOrigin(0.5, 0);
+        accSprite.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row) + 0.01);
+        this.accessorySprites.set(golfer.id, accSprite);
+      }
+    }
+
+    return sprite;
   }
 
   /** Update spawn parameters based on current day phase — delegated to DayCycle */
@@ -365,10 +385,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   // ChallengeHost: spawn opponent sprite
   onOpponentSpawned(opponent: Golfer, col: number, row: number): void {
     const pos = this.tileToWorld(col, row);
-    const sprite = this.add.sprite(pos.x, pos.y - 4, `golfer_${opponent.colorIndex}`);
-    sprite.setOrigin(0.5, 1);
+    const sprite = this.createGolferSprite(opponent, pos.x, pos.y - 4);
     sprite.setScale(1.0);
-    sprite.setDepth(this.getGolferDepth(col, row));
     this.golferSprites.set(opponent.id, sprite);
   }
 
@@ -376,6 +394,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   onOpponentRemoved(opponentId: number): void {
     const sprite = this.golferSprites.get(opponentId);
     if (sprite) { sprite.destroy(); this.golferSprites.delete(opponentId); }
+    const accSprite = this.accessorySprites.get(opponentId);
+    if (accSprite) { accSprite.destroy(); this.accessorySprites.delete(opponentId); }
   }
 
   // ChallengeHost: restore builder UI after challenge ends
@@ -3364,6 +3384,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       sprite.destroy();
       this.golferSprites.delete(golfer.id);
     }
+    const accSprite = this.accessorySprites.get(golfer.id);
+    if (accSprite) {
+      accSprite.destroy();
+      this.accessorySprites.delete(golfer.id);
+    }
     this.removeBallSprite(golfer.id);
     golferStore.getState().removeGolfer(golfer.id);
   }
@@ -3387,6 +3412,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.buildingSprites.clear();
     this.golferSprites.forEach((s) => s.destroy());
     this.golferSprites.clear();
+    this.accessorySprites.forEach((s) => s.destroy());
+    this.accessorySprites.clear();
     this.activeBalls.forEach((b) => b.sprite.destroy());
     this.activeBalls.clear();
     this.landingBallSprites.forEach((s) => s.destroy());
