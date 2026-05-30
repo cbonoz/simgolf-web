@@ -19,24 +19,22 @@ Cozy tycoon + sandbox builder. Think SimGolf meets Mini Metro meets Prison Archi
 
 ## Where We're Going
 
-### Near-term (make it feel like a real game — next 5-10 tasks)
+### Near-term (make it feel like a real game)
 
-**Game feel & polish**
-- Better golfer sprites (not just colored circles — give them little bodies, hats, animations)
-- Smoother ball flight with clearer arc trails
-- Camera auto-follow on active golfer (optional toggle)
-- Sound effects: proper swing whoosh, ball thwack, cup rattle, bird chirps
-- Title screen that looks like a game (animated background, gradient, logo)
+**Done — foundational polish complete (May 2026)**
+- ✅ Golfer sprites with bodies, hats, pants, 8 color palettes
+- ✅ Ball flight arc trail + smooth tracing
+- ✅ Camera auto-follow (toggleable)
+- ✅ Sound effects: swing whoosh, ball thwack, cup rattle, water splash, tree rustle (Web Audio synthesis)
+- ✅ Title screen with animated background, floating golfers, emoji bursts, flags
+- ✅ Cohesive warm color palette (warmer greens, golden sand, deep blue water)
+- ✅ Rich procedural tile textures (mowing stripes, sand grain, wave lines, grass tufts, leaf litter, gradient shading)
+- ✅ Water shimmer animation
+- ✅ Tree clustering + procedural shadows
 
-**Visual identity**
-- Cohesive color palette — warm greens, golden hour vibe
-- Tile textures that don't look like placeholder programmer art
-- Water with subtle animation (not just blue tile)
-- Trees that look like trees (cluster sprites, shadows)
-
-**Gameplay depth**
+**Next — gameplay depth**
 - Golfer variety: different body shapes, colors, accessories — they should feel like characters
-- More interesting stroke outcomes (bounces off trees, roll on fairway, plugged in sand)
+- More interesting stroke outcomes (bounces off trees with angle deflection, roll on fairway, plugged in sand)
 - Stats overlay after each round (not just day summary — individual golfer stats)
 
 ### Medium-term (mechanics that make it compelling)
