@@ -110,6 +110,10 @@ export class ChallengeMode {
       return true;
     }
 
+    if (this.playerState === 'waiting') {
+      return true; // handled — no state transition, just waiting for opponent
+    }
+
     return true;
   }
 
@@ -307,8 +311,7 @@ export class ChallengeMode {
     const store = courseStore.getState();
     const nextHole = store.holes.find((h) => h.id === this.playerCurrentHole + 1);
     if (!nextHole?.tee) {
-      // Round complete
-      this.active = false;
+      // Round complete — keep active so opponent tracking still works during waiting
       this.playerState = 'complete';
       this.showResult();
       return;
@@ -335,6 +338,9 @@ export class ChallengeMode {
       this.playerState = 'waiting';
       return;
     }
+
+    // Both players done — deactivate challenge and show results
+    this.active = false;
 
     const playerWon = this.playerTotalStrokes < oppTotal;
     const tie = this.playerTotalStrokes === oppTotal;

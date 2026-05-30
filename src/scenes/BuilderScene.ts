@@ -579,6 +579,16 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
         break;
       }
       case 'in_flight': {
+        // Clean up any previous ball sprite first
+        if (this.playerBall) {
+          this.playerBall.removeSprite();
+          this.playerBall = null;
+        }
+        if (this.lastPlayerBallSprite) {
+          this.lastPlayerBallSprite.destroy();
+          this.lastPlayerBallSprite = null;
+        }
+
         // Create ball flight animation
         const maxArc = result.isGreen ? 600 : 500;
         const landingCol = result.landingCol;
@@ -590,6 +600,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
           () => {
             const r = this.challenge.onBallLanded(landingCol, landingRow);
             if (r.message) this.showTemporaryMessage(r.message);
+            // Clean up ball sprite — playerMarker is the persistent indicator
+            if (this.playerBall) {
+              this.playerBall.removeSprite();
+              this.playerBall = null;
+            }
           }
         );
         ball.sprite.setTexture('ball_player');
@@ -947,6 +962,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
         this.handleChallengeInput(pointer);
         return;
       }
+
+      // Block all builder clicks during challenge (including waiting/paused states)
+      if (this.challenge.active) return;
 
       if (pointer.rightButtonDown() || (this.builderMode === 'none' && pointer.leftButtonDown())) {
         // Start panning
@@ -3244,7 +3262,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
 
     // Track opponent scores during challenge mode
     if (this.challenge.active && golfer.id === this.challenge.opponentId) {
-      this.challenge.opponentScorecard.push(golfer.strokes);
+      this.challenge.onOpponentHoleComplete(golfer.strokes);
     }
 
     // Trigger a spawn only when ALL active golfers have finished hole 1
