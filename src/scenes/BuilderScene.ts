@@ -601,9 +601,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
             const r = this.challenge.onBallLanded(landingCol, landingRow);
             if (r.message) this.showTemporaryMessage(r.message);
             // Clean up ball sprite — playerMarker is the persistent indicator
-            if (this.playerBall) {
-              this.playerBall.removeSprite();
-              this.playerBall = null;
+            if (ball.sprite) {
+              ball.removeSprite();
             }
           }
         );
@@ -2173,8 +2172,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       this.challenge.update(delta);
       // Handle ball flight in challenge mode
       if (this.playerBall) {
-        this.playerBall.update(delta);
-        if (this.playerBall.complete) {
+        const ball = this.playerBall; // save reference before callback nullifies it
+        ball.update(delta);
+        if (ball.complete) {
           this.playerBall = null;
         }
       }
