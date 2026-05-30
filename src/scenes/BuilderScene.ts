@@ -2413,7 +2413,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     tooltip.style.cssText = `
       position: fixed; z-index: 200; background: rgba(0,0,0,0.95); border-radius: 10px;
       padding: 16px 20px; color: #fff; font-family: sans-serif; font-size: 14px;
-      width: 280px; pointer-events: none; line-height: 1.6;
+      width: 300px; pointer-events: none; line-height: 1.6;
       border: 1px solid #ffcc80;
       top: 10px; right: 220px;
     `;
@@ -2443,23 +2443,47 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     }
     tooltip.appendChild(skillsEl);
 
+    // Current round stats with hole-by-hole scorecard
     const stats = document.createElement('div');
-    stats.style.cssText = 'color: #ccc; font-size: 13px;';
-    stats.innerHTML = `
-      Skill: ${Math.round(golfer.skill * 100)}% | Hole ${golfer.currentHole}<br>
-      Strokes: ${golfer.strokes} | Total: ${golfer.totalStrokes}
-    `;
+    stats.style.cssText = 'color: #ccc; font-size: 13px; margin-bottom: 6px;';
+    let scorecardHtml = `Skill: ${Math.round(golfer.skill * 100)}% | Hole ${golfer.currentHole}<br>Strokes: ${golfer.strokes} | Total: ${golfer.totalStrokes}`;
+    if (golfer.scorecard.length > 0) {
+      const holesStr = golfer.scorecard.map((s, i) => {
+        const h = store.holes.find((hh) => hh.id === i + 1);
+        const par = h?.par ?? 3;
+        const diff = s - par;
+        const color = diff < 0 ? '#4caf50' : diff === 0 ? '#ffcc80' : '#ef5350';
+        return `<span style="color:${color}">${s}</span>`;
+      }).join(' \u00b7 ');
+      scorecardHtml += `<br>Scorecard: ${holesStr}`;
+    }
+    stats.innerHTML = scorecardHtml;
     tooltip.appendChild(stats);
 
+    // Career stats (from recordGolferRound tracking)
+    const careerStats = golferStore.getState().careerStats[golfer.name];
+    if (careerStats) {
+      const career = document.createElement('div');
+      career.style.cssText = 'color: #888; font-size: 12px; border-top: 1px solid #444; padding-top: 6px; margin-top: 4px;';
+      const avgScore = careerStats.appearances > 0
+        ? Math.round((careerStats.totalStrokes / careerStats.appearances) * 10) / 10
+        : '-';
+      career.innerHTML = `
+        &#x1F4CA; Career &mdash; Rounds: ${careerStats.appearances} | Best: ${careerStats.bestScore ?? '-'} | Avg: ${avgScore}<br>
+        &#x1F426; ${careerStats.birdies} birdies &middot; &#x2705; ${careerStats.pars} pars &middot; &#x1F4A2; ${careerStats.bogeys} bogeys
+      `;
+      tooltip.appendChild(career);
+    }
+
     const thoughtEl = document.createElement('div');
-    thoughtEl.textContent = `💭 "${thought}"`;
+    thoughtEl.textContent = `\u{1F4AD} "${thought}"`;
     thoughtEl.style.cssText = 'color: #a8d8a8; font-style: italic; margin-top: 8px; font-size: 13px;';
     tooltip.appendChild(thoughtEl);
 
     document.body.appendChild(tooltip);
     this.golferTooltip = tooltip;
 
-    setTimeout(() => this.hideGolferTooltip(), 3000);
+    setTimeout(() => this.hideGolferTooltip(), 4000);
   }
 
   private hideGolferTooltip(): void {
@@ -3378,6 +3402,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     store.addCompletedScore(golfer.totalStrokes);
     // Track daily golfer count for day summary
     store.addDailyGolferCompleted();
+
+    // Record career stats for this golfer (keyed by name)
+    golferStore.getState().recordGolferRound(golfer.name, golfer.scorecard, golfer.totalStrokes, coursePar);
 
     const sprite = this.golferSprites.get(golfer.id);
     if (sprite) {

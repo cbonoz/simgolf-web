@@ -215,10 +215,22 @@ export interface Golfer {
   skills: GolferSkill[];
 }
 
+export interface GolferCareerStats {
+  appearances: number;      // rounds played
+  bestScore: number | null; // lowest total strokes
+  totalStrokes: number;     // sum of all rounds
+  birdies: number;          // holes at -1 or better
+  pars: number;
+  bogeys: number;           // holes at +1 or worse (but not maxed)
+  totalHoles: number;
+}
+
 export interface GolferStoreState {
   golfers: Golfer[];
   nextId: number;
   completedRounds: number;
+  careerStats: Record<string, GolferCareerStats>; // keyed by golfer name
+  recordGolferRound: (name: string, scorecard: number[], totalStrokes: number, coursePar: number) => void;
   spawnGolfer: (startCol: number, startRow: number) => Golfer | null;
   removeGolfer: (id: number) => void;
   updateGolfer: (id: number, updates: Partial<Golfer>) => void;
@@ -229,6 +241,7 @@ export const golferStore = createStore<GolferStoreState>()((set, get) => ({
   golfers: [],
   nextId: 1,
   completedRounds: 0,
+  careerStats: {},
 
   spawnGolfer: (startCol, startRow) => {
     const state = get();
@@ -279,6 +292,42 @@ export const golferStore = createStore<GolferStoreState>()((set, get) => ({
         g.id === id ? { ...g, ...updates } : g
       ),
     })),
+
+  recordGolferRound: (name, scorecard, totalStrokes, coursePar) =>
+    set((state) => {
+      const prev = state.careerStats[name] ?? {
+        appearances: 0,
+        bestScore: null,
+        totalStrokes: 0,
+        birdies: 0,
+        pars: 0,
+        bogeys: 0,
+        totalHoles: 0,
+      };
+      let birdies = prev.birdies;
+      let pars = prev.pars;
+      let bogeys = prev.bogeys;
+      for (const s of scorecard) {
+        if (s <= coursePar - 1) birdies++;
+        else if (s === coursePar) pars++;
+        else bogeys++;
+      }
+      return {
+        careerStats: {
+          ...state.careerStats,
+          [name]: {
+            appearances: prev.appearances + 1,
+            bestScore: prev.bestScore === null ? totalStrokes : Math.min(prev.bestScore, totalStrokes),
+            totalStrokes: prev.totalStrokes + totalStrokes,
+            birdies,
+            pars,
+            bogeys,
+            totalHoles: prev.totalHoles + scorecard.length,
+          },
+        },
+        completedRounds: state.completedRounds + 1,
+      };
+    }),
 
   resetGolfers: () =>
     set({ golfers: [], nextId: 1, completedRounds: 0 }),
