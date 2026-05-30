@@ -78,48 +78,218 @@ export class BootScene extends Phaser.Scene {
   private addTileDetails(g: Phaser.GameObjects.Graphics, type: TerrainType, w: number, h: number): void {
     const cx = w / 2;
     const cy = h / 2;
+    const rng = this.makeSeededRng(type);
 
     switch (type) {
-      case 'fairway':
-        g.lineStyle(1, 0x3d7a33, 0.3);
+      case 'fairway': {
+        // Subtle gradient — lighter top edge
+        g.fillStyle(0xffffff, 0.08);
         g.beginPath();
-        g.moveTo(6, cy - 4);
-        g.lineTo(w - 6, cy - 4);
-        g.strokePath();
-        g.beginPath();
-        g.moveTo(6, cy + 4);
-        g.lineTo(w - 6, cy + 4);
-        g.strokePath();
-        break;
-      case 'green':
-        g.fillStyle(0x68cc68, 0.3);
-        g.fillCircle(cx, cy, 6);
-        break;
-      case 'sand':
-        g.fillStyle(0xc4a55a, 0.6);
-        const sandOffsets = [[-8, -2], [-3, 3], [2, -1], [7, 2], [5, -3]];
-        for (const [dx, dy] of sandOffsets) {
-          g.fillCircle(cx + dx, cy + dy, 1);
+        g.moveTo(w / 2, 0);
+        g.lineTo(w, h / 2);
+        g.lineTo(w / 2, h * 0.45);
+        g.lineTo(0, h / 2);
+        g.closePath();
+        g.fillPath();
+
+        // Mowing stripes — alternating lighter/darker diagonal bands
+        g.lineStyle(1, 0x4a8a3e, 0.3);
+        for (let y = -h; y < h * 2; y += 8) {
+          const x1 = 0;
+          const x2 = w;
+          const y1 = y;
+          const y2 = y + 4;
+          // Clip to diamond by checking isometric bounds
+          g.beginPath();
+          g.moveTo(x1 - 10, y1);
+          g.lineTo(x2 + 10, y2);
+          g.strokePath();
+        }
+
+        // Tiny noise dots for texture
+        for (let i = 0; i < 20; i++) {
+          const nx = 4 + Math.floor(rng() * (w - 8));
+          const ny = 4 + Math.floor(rng() * (h - 8));
+          // Only place inside diamond
+          if (this.isInsideIsoDiamond(nx, ny, w, h)) {
+            g.fillStyle(rng() > 0.5 ? 0x4a8a3e : 0x6ab84e, 0.25);
+            g.fillCircle(nx, ny, 1);
+          }
         }
         break;
-      case 'water':
-        g.lineStyle(1, 0x6ba3e8, 0.5);
+      }
+      case 'rough': {
+        // Rough gradient — slightly darker bottom
+        g.fillStyle(0x000000, 0.06);
         g.beginPath();
-        g.moveTo(8, cy - 2);
-        g.lineTo(cx - 4, cy - 4);
-        g.lineTo(cx + 4, cy + 2);
+        g.moveTo(0, h / 2);
+        g.lineTo(w / 2, h);
+        g.lineTo(w, h / 2);
+        g.lineTo(w / 2, h * 0.55);
+        g.closePath();
+        g.fillPath();
+
+        // Wild grass tufts — short strokes
+        for (let i = 0; i < 14; i++) {
+          const nx = 4 + Math.floor(rng() * (w - 8));
+          const ny = 4 + Math.floor(rng() * (h - 8));
+          if (this.isInsideIsoDiamond(nx, ny, w, h)) {
+            g.lineStyle(1, 0x5a6b2e, 0.35 + rng() * 0.2);
+            g.beginPath();
+            g.moveTo(nx, ny);
+            const tuftDir = rng() * 0.5 - 0.25;
+            g.lineTo(nx + tuftDir, ny - 2 - rng() * 2);
+            g.strokePath();
+          }
+        }
+
+        // Variation dots
+        for (let i = 0; i < 10; i++) {
+          const nx = 4 + Math.floor(rng() * (w - 8));
+          const ny = 4 + Math.floor(rng() * (h - 8));
+          if (this.isInsideIsoDiamond(nx, ny, w, h)) {
+            g.fillStyle(0x8a9c5a, 0.15);
+            g.fillCircle(nx, ny, 1.5);
+          }
+        }
+        break;
+      }
+      case 'sand': {
+        // Sand grain texture — many tiny dots
+        for (let i = 0; i < 30; i++) {
+          const nx = 4 + Math.floor(rng() * (w - 8));
+          const ny = 4 + Math.floor(rng() * (h - 8));
+          if (this.isInsideIsoDiamond(nx, ny, w, h)) {
+            const shade = rng() > 0.5 ? 0xf0d48a : 0xc4a55a;
+            g.fillStyle(shade, 0.3);
+            g.fillCircle(nx, ny, 0.8 + rng() * 0.5);
+          }
+        }
+
+        // Subtle ripple lines
+        g.lineStyle(1, 0xc4a55a, 0.2);
+        g.beginPath();
+        g.moveTo(8, cy - 3);
+        g.lineTo(cx - 3, cy - 6);
+        g.lineTo(cx + 3, cy + 3);
         g.lineTo(w - 8, cy);
         g.strokePath();
+        g.beginPath();
+        g.moveTo(6, cy + 3);
+        g.lineTo(cx - 5, cy);
+        g.lineTo(cx + 5, cy + 6);
+        g.lineTo(w - 6, cy + 3);
+        g.strokePath();
         break;
-      case 'trees':
-        // Base tile is plain dark ground — real vegetation sprites overlay on top
+      }
+      case 'water': {
+        // Deeper gradient — darker at edges
+        g.fillStyle(0x000000, 0.08);
+        g.beginPath();
+        g.moveTo(w / 2, 0);
+        g.lineTo(w, h / 2);
+        g.lineTo(w / 2, h);
+        g.lineTo(0, h / 2);
+        g.closePath();
+        g.fillPath();
+
+        // Water wave lines — multiple subtle lines
+        g.lineStyle(1, 0x6ba3e8, 0.35);
+        for (let wave = -1; wave <= 1; wave++) {
+          const wy = cy + wave * 5;
+          g.beginPath();
+          g.moveTo(10, wy - 2);
+          g.lineTo(cx - 4, wy - 4);
+          g.lineTo(cx + 4, wy + 2);
+          g.lineTo(w - 10, wy);
+          g.strokePath();
+        }
+
+        // Light reflection spots
+        for (let i = 0; i < 6; i++) {
+          const nx = 6 + Math.floor(rng() * (w - 12));
+          const ny = 4 + Math.floor(rng() * (h - 8));
+          if (this.isInsideIsoDiamond(nx, ny, w, h)) {
+            g.fillStyle(0x8fc8ff, 0.2 + rng() * 0.15);
+            g.fillCircle(nx, ny, 1 + rng() * 1.5);
+          }
+        }
         break;
-      case 'rough':
-        g.fillStyle(0x5a6b2e, 0.4);
-        g.fillRect(cx - 4, cy - 2, 2, 4);
-        g.fillRect(cx + 3, cy, 2, 3);
+      }
+      case 'trees': {
+        // Base tile — dark forest floor with leaf litter texture
+        g.fillStyle(0x000000, 0.05);
+        g.beginPath();
+        g.moveTo(0, h / 2);
+        g.lineTo(w / 2, h);
+        g.lineTo(w, h / 2);
+        g.lineTo(w / 2, h * 0.55);
+        g.closePath();
+        g.fillPath();
+
+        // Leaf litter dots
+        for (let i = 0; i < 12; i++) {
+          const nx = 4 + Math.floor(rng() * (w - 8));
+          const ny = 4 + Math.floor(rng() * (h - 8));
+          if (this.isInsideIsoDiamond(nx, ny, w, h)) {
+            g.fillStyle(0x4a7a3e, 0.2);
+            g.fillCircle(nx, ny, 1 + rng() * 1);
+          }
+        }
         break;
+      }
+      case 'green': {
+        // Green gradient — lighter center, darker edges
+        g.fillStyle(0xffffff, 0.1);
+        g.fillCircle(cx, cy, 6);
+
+        // Subtle gradient bands
+        g.fillStyle(0x000000, 0.04);
+        g.beginPath();
+        g.moveTo(0, h / 2);
+        g.lineTo(w / 2, h);
+        g.lineTo(w, h / 2);
+        g.lineTo(w / 2, h * 0.55);
+        g.closePath();
+        g.fillPath();
+
+        // Putting surface — very fine, smooth texture
+        for (let i = 0; i < 10; i++) {
+          const nx = 4 + Math.floor(rng() * (w - 8));
+          const ny = 4 + Math.floor(rng() * (h - 8));
+          if (this.isInsideIsoDiamond(nx, ny, w, h)) {
+            g.fillStyle(0x5ab85a, 0.2);
+            g.fillCircle(nx, ny, 1);
+          }
+        }
+        break;
+      }
     }
+  }
+
+  /** Simple seeded PRNG for deterministic noise patterns */
+  private makeSeededRng(seed: string): () => number {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      const c = seed.charCodeAt(i);
+      hash = ((hash << 5) - hash) + c;
+      hash |= 0;
+    }
+    let state = hash;
+    return () => {
+      state = state * 1664525 + 1013904223;
+      return ((state >>> 0) % 1000) / 1000;
+    };
+  }
+
+  /** Check if a point (x,y) is inside the isometric diamond (64x32) */
+  private isInsideIsoDiamond(x: number, y: number, w: number, h: number): boolean {
+    const cx = w / 2;
+    const cy = h / 2;
+    const dx = Math.abs(x - cx);
+    const dy = Math.abs(y - cy);
+    // Diamond equation: dx/(w/2) + dy/(h/2) <= 1
+    return (dx / cx) + (dy / cy) <= 1.0;
   }
 
   private generateEntityTextures(): void {

@@ -23,12 +23,12 @@ export const TERRAIN_COST: Record<TerrainType, number> = {
 
 // Terrain colors (for procedural generation)
 export const TERRAIN_COLORS: Record<TerrainType, number> = {
-  fairway: 0x4a8f3f,
-  rough: 0x6b7c3e,
-  sand: 0xd4b96a,
-  water: 0x3a7ecf,
-  trees: 0x2d5a27,
-  green: 0x5cb85c,
+  fairway: 0x5da04a,
+  rough: 0x7a8c4e,
+  sand: 0xe8c97a,
+  water: 0x4a8ed4,
+  trees: 0x3a6a32,
+  green: 0x6ec86e,
 };
 
 // Vegetation / Foliage types (sprite key, display name, cost)
