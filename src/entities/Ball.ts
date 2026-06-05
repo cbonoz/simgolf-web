@@ -6,6 +6,8 @@ export class Ball {
   private scene: Phaser.Scene;
   private startPos: { x: number; y: number };
   private endPos: { x: number; y: number };
+  private startHeight: number;
+  private endHeight: number;
   private arcHeight: number;
   private duration: number;
   private elapsed: number;
@@ -33,11 +35,20 @@ export class Ball {
     offsetX: number,
     offsetY: number,
     duration: number,
-    onComplete: () => void
+    onComplete: () => void,
+    /** Elevation of the source tile (for height-adjusted flight path) */
+    fromHeight = 0,
+    /** Elevation of the destination tile */
+    toHeight = 0,
   ) {
     this.scene = scene;
     this.startPos = tileToScreen(fromCol, fromRow, offsetX, offsetY);
     this.endPos = tileToScreen(toCol, toRow, offsetX, offsetY);
+    this.startHeight = fromHeight;
+    this.endHeight = toHeight;
+    // Adjust Y for elevation: raised tiles shift the ball up
+    this.startPos.y -= fromHeight * 4;
+    this.endPos.y -= toHeight * 4;
     this.duration = duration;
     this.elapsed = 0;
     this.onComplete = onComplete;

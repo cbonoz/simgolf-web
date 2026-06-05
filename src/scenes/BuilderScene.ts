@@ -308,8 +308,18 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.MIN_GOLFERS = this.dayCycle.minGolfers;
   }
 
+  /** Height scale: 1 elevation unit = 4 pixels of Y offset */
+  private static readonly HEIGHT_SCALE = 4;
+
   private tileToWorld(col: number, row: number): { x: number; y: number } {
-    return tileToScreen(col, row, this.OFFSET_X, this.OFFSET_Y);
+    const base = tileToScreen(col, row, this.OFFSET_X, this.OFFSET_Y);
+    const grid = courseStore.getState().grid;
+    if (row >= 0 && row < grid.length && col >= 0 && col < grid[row].length) {
+      const h = grid[row][col].height ?? 0;
+      base.y -= h * BuilderScene.HEIGHT_SCALE;
+      base.y = Math.round(base.y);
+    }
+    return base;
   }
 
   private worldToTile(worldX: number, worldY: number): { col: number; row: number } {
@@ -663,10 +673,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     for (let row = 0; row < GRID_ROWS; row++) {
       this.tileSprites[row] = [];
       for (let col = 0; col < GRID_COLS; col++) {
-        const basePos = this.tileToWorld(col, row);
         const tile = store.grid[row][col];
-        const heightOffset = tile.height * HEIGHT_SCALE;
-        const pos = { x: basePos.x, y: basePos.y - heightOffset };
+        const pos = this.tileToWorld(col, row); // height accounted for internally
         const sprite = this.add.sprite(pos.x, pos.y, `tile_${tile.type}`);
         sprite.setOrigin(0.5, 0.5);
         sprite.setDepth((col + row) * GRID_COLS + col + tile.height * 2);
@@ -791,7 +799,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
 
   /** Draw slope wall graphics between tiles of different heights */
   private addSlopeWalls(col: number, row: number, pos: { x: number; y: number }, height: number, grid: Tile[][]): void {
-    const HEIGHT_SCALE = 4;
+    const HEIGHT_SCALE = BuilderScene.HEIGHT_SCALE;
     const cx = pos.x;
     const cy = pos.y;
     const hw = TILE_WIDTH / 2;
@@ -928,10 +936,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
         const tile = store.grid[row][col];
         this.tileSprites[row][col].setTexture(`tile_${tile.type}`);
 
-        // Update position for height
-        const basePos = this.tileToWorld(col, row);
-        const heightOffset = tile.height * HEIGHT_SCALE;
-        const pos = { x: basePos.x, y: basePos.y - heightOffset };
+        // Update position for height (via tileToWorld which accounts for height)
+        const pos = this.tileToWorld(col, row);
         this.tileSprites[row][col].setPosition(pos.x, pos.y);
         this.tileSprites[row][col].setDepth((col + row) * GRID_COLS + col + tile.height * 2);
 
@@ -2825,6 +2831,10 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       previousTilePos: previousPos,
     });
 
+    // Get tile heights for ball flight arc
+    const fromHeight = store.grid[currentPos.row]?.[currentPos.col]?.height ?? 0;
+    const toHeight = store.grid[landingRow]?.[landingCol]?.height ?? 0;
+
     this.activeBalls.set(golfer.id, new Ball(
       this,
       currentPos.col,
@@ -2834,7 +2844,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       this.OFFSET_X,
       this.OFFSET_Y,
       GAME_CONFIG.BALL_FLIGHT_TIME, // ball travel time
-      () => this.onBallLanded(golfer.id, landingCol, landingRow, previousPos)
+      () => this.onBallLanded(golfer.id, landingCol, landingRow, previousPos),
+      fromHeight,
+      toHeight,
     ));
   }
 
