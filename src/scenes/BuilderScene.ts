@@ -270,7 +270,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   }
 
   private getGolferDepth(col: number, row: number): number {
-    return (col + row) * GRID_COLS + col + 0.5;
+    const tile = courseStore.getState().grid[row]?.[col];
+    const height = tile?.height ?? 0;
+    return (col + row) * GRID_COLS + col + height * 2 + 0.5;
   }
 
   /**
