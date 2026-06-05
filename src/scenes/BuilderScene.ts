@@ -2745,9 +2745,51 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     // --- Tree collision: trace the flight path tile-by-tile ---
     const treeHit = this.traceFlightPath(currentPos.col, currentPos.row, landingCol, landingRow, store.grid);
     if (treeHit) {
-      // Ball hits a tree — deflect to the tile just before the tree
-      landingCol = treeHit.col;
-      landingRow = treeHit.row;
+      // Ball hits a tree — deflect at an angle rather than stopping flat
+      // Compute the incoming direction of the ball flight (from golfer toward tree)
+      const dirCol = Math.sign(landingCol - currentPos.col) || 1;
+      const dirRow = Math.sign(landingRow - currentPos.row) || 1;
+      // Deflection candidates: ~45° and ~90° off the original direction
+      // Each is a (dc, dr) pair that's off-axis from the incoming direction
+      const candidates: [number, number][] = [];
+      const addDir = (dc: number, dr: number) => {
+        const nc = treeHit.col + dc;
+        const nr = treeHit.row + dr;
+        if (nc >= 0 && nc < GRID_COLS && nr >= 0 && nr < GRID_ROWS
+          && store.grid[nr][nc].type !== 'trees'
+          && store.grid[nr][nc].type !== 'water') {
+          candidates.push([nc, nr]);
+        }
+      };
+      // Try two deflection angles: glancing (45°) and hard (90°)
+      // If ball was going diagonally (both axes), glance along one axis
+      if (dirCol !== 0 && dirRow !== 0) {
+        addDir(dirCol, 0);      // horizontal glance
+        addDir(0, dirRow);      // vertical glance
+        addDir(-dirCol, dirRow); // cross-deflect
+        addDir(dirCol, -dirRow);
+      } else if (dirCol !== 0) {
+        // Moving horizontally — glance up/down
+        addDir(dirCol, 1);
+        addDir(dirCol, -1);
+        addDir(0, 1);
+        addDir(0, -1);
+      } else {
+        // Moving vertically — glance left/right
+        addDir(1, dirRow);
+        addDir(-1, dirRow);
+        addDir(1, 0);
+        addDir(-1, 0);
+      }
+      if (candidates.length > 0) {
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        landingCol = pick[0];
+        landingRow = pick[1];
+      } else {
+        // Fallback: land at the tile before the tree
+        landingCol = treeHit.col;
+        landingRow = treeHit.row;
+      }
       // If the deflected tile is the same as where the golfer is standing,
       // scatter to a random adjacent tile instead
       if (landingCol === currentPos.col && landingRow === currentPos.row) {

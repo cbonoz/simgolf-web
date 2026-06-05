@@ -35,7 +35,8 @@ Cozy tycoon + sandbox builder. Think SimGolf meets Mini Metro meets Prison Archi
 **Next — gameplay depth**
 - ~~Golfer variety: different body shapes, colors, accessories — they should feel like characters~~ ✅
 - ~~Stats overlay with career tracking — hole-by-hole scorecard, career best/average, birdies/pars/bogeys~~ ✅
-- More interesting stroke outcomes (bounces off trees with angle deflection, roll on fairway, plugged in sand)
+- ~~More interesting stroke outcomes (bounces off trees with angle deflection, roll on fairway, plugged in sand)~~ ✅
+- Terrain height editing (raised greens, lowered bunkers)
 
 ### Medium-term (mechanics that make it compelling)
 
