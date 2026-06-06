@@ -55,7 +55,7 @@ Cozy tycoon + sandbox builder. Think SimGolf meets Mini Metro meets Prison Archi
 - Skill tiers with visible behavior differences
 - Golfers that react to course conditions (complain about unfair holes)
 - A "favorite golfer" you root for that plays multiple days
-- Golfer names + generated backstories (procedural flavor text)
+- ~~Golfer names + generated backstories (procedural flavor text)~~ ✅
 
 ### Long-term (the dream)
 
