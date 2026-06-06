@@ -1,7 +1,7 @@
 import * as Phaser from 'phaser';
 import { courseStore, Tile, HoleConfig, PlacedBuilding, getClubhousePosition, getDayPhase } from '../state/course';
 import { golferStore, Golfer, generateThought } from '../state/golfers';
-import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
+import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
 import { GAME_CONFIG } from '../utils/gameConfig';
 import { tileToScreen, screenToTile, clampTile, calculatePar, totalCoursePar, countConfiguredHoles, formatVsPar, vsParColor, getSkillTier } from '../utils/helpers';
 import { Ball } from '../entities/Ball';
@@ -10,6 +10,7 @@ import { ChallengeMode, ChallengeHost, type ChallengeResultData, type SwingResul
 import { DayCycle, type DayCycleHost } from '../systems/DayCycle';
 import { SceneUI, type SceneUIHost } from '../systems/SceneUI';
 import { EconomyTick, type EconomyTickHost } from '../systems/EconomyTick';
+import { computeStroke, resolveLanding, determineReaction, pickClubDistance, traceFlightPath } from '../systems/GolferAI';
 
 type CourseSnapshot = {
   grid: Tile[][];
@@ -2716,141 +2717,21 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       return;
     }
 
-    const cupPos = hole.cup;
-    const currentPos = golfer.tilePos;
+    const { landingCol, landingRow, treeHit } = computeStroke(golfer, hole, store.grid);
 
-    const dx = cupPos.col - currentPos.col;
-    const dy = cupPos.row - currentPos.row;
-    const distance = Math.abs(dx) + Math.abs(dy);
+    const previousPos = { ...golfer.tilePos };
 
-    let targetDistance = this.pickClubDistance(distance);
+    // Emit shot tracer
+    this.emitShotTracer(golfer.tilePos.col, golfer.tilePos.row, landingCol, landingRow);
 
-    // --- Skill modifiers ---
-    const hasLongDrive = golfer.skills.some(s => s.name === 'Long Drive');
-    const hasPowerSwing = golfer.skills.some(s => s.name === 'Power Swing');
-    const hasShortGame = golfer.skills.some(s => s.name === 'Short Game');
-    const hasIronMan = golfer.skills.some(s => s.name === 'Iron Man');
-    const hasWindReader = golfer.skills.some(s => s.name === 'Wind Reader');
-
-    // Long Drive / Power Swing: add bonus distance
-    if (hasLongDrive) targetDistance += 2;
-    if (hasPowerSwing) targetDistance += 2;
-    // Short Game: bonus on short approaches (<6 tile distance)
-    if (hasShortGame && distance < 6) targetDistance += 2;
-
-    // --- Terrain lie effects ---
-    const currentTile = store.grid[currentPos.row][currentPos.col];
-    const lieEffect = TERRAIN_EFFECTS[currentTile.type];
-
-    // Wind Reader: reduces terrain penalty
-    const terrainPenalty = hasWindReader ? 0.5 : 1.0;
-    const lieQuality = currentTile.type === 'fairway' || currentTile.type === 'green' ? 1.0
-      : 1.0 - (1.0 - lieEffect.lieQuality) * terrainPenalty;
-    const lieDistMod = currentTile.type === 'fairway' || currentTile.type === 'green' ? 1.0
-      : 1.0 - (1.0 - lieEffect.distanceModifier) * terrainPenalty;
-
-    // Iron Man: bonus accuracy on fairway
-    const accuracyBonus = (hasIronMan && currentTile.type === 'fairway') ? 0.2 : 0;
-
-    const errorFactor = (1 - (golfer.skill + accuracyBonus)) * (2 - lieQuality);
-    const angleError = (Math.random() - 0.5) * 2 * Math.PI * 0.25 * errorFactor;
-    const distanceError = 1 + (Math.random() - 0.5) * 0.3 * errorFactor;
-
-    targetDistance = Math.round(targetDistance * distanceError * lieDistMod);
-    targetDistance = Math.max(1, targetDistance);
-
-    let landingCol: number;
-    let landingRow: number;
-
-    if (distance <= 1) {
-      landingCol = cupPos.col;
-      landingRow = cupPos.row;
-    } else {
-      const angle = Math.atan2(dy, dx) + angleError;
-      landingCol = Math.round(currentPos.col + Math.cos(angle) * targetDistance);
-      landingRow = Math.round(currentPos.row + Math.sin(angle) * targetDistance);
-    }
-
-    const clamped = clampTile(landingCol, landingRow, GRID_COLS, GRID_ROWS);
-    landingCol = clamped.col;
-    landingRow = clamped.row;
-
-    // --- Tree collision: trace the flight path tile-by-tile ---
-    const treeHit = this.traceFlightPath(currentPos.col, currentPos.row, landingCol, landingRow, store.grid);
+    // Track tree hits
     if (treeHit) {
-      // Ball hits a tree — deflect at an angle rather than stopping flat
-      // Compute the incoming direction of the ball flight (from golfer toward tree)
-      const dirCol = Math.sign(landingCol - currentPos.col) || 1;
-      const dirRow = Math.sign(landingRow - currentPos.row) || 1;
-      // Deflection candidates: ~45° and ~90° off the original direction
-      // Each is a (dc, dr) pair that's off-axis from the incoming direction
-      const candidates: [number, number][] = [];
-      const addDir = (dc: number, dr: number) => {
-        const nc = treeHit.col + dc;
-        const nr = treeHit.row + dr;
-        if (nc >= 0 && nc < GRID_COLS && nr >= 0 && nr < GRID_ROWS
-          && store.grid[nr][nc].type !== 'trees'
-          && store.grid[nr][nc].type !== 'water') {
-          candidates.push([nc, nr]);
-        }
-      };
-      // Try two deflection angles: glancing (45°) and hard (90°)
-      // If ball was going diagonally (both axes), glance along one axis
-      if (dirCol !== 0 && dirRow !== 0) {
-        addDir(dirCol, 0);      // horizontal glance
-        addDir(0, dirRow);      // vertical glance
-        addDir(-dirCol, dirRow); // cross-deflect
-        addDir(dirCol, -dirRow);
-      } else if (dirCol !== 0) {
-        // Moving horizontally — glance up/down
-        addDir(dirCol, 1);
-        addDir(dirCol, -1);
-        addDir(0, 1);
-        addDir(0, -1);
-      } else {
-        // Moving vertically — glance left/right
-        addDir(1, dirRow);
-        addDir(-1, dirRow);
-        addDir(1, 0);
-        addDir(-1, 0);
-      }
-      if (candidates.length > 0) {
-        const pick = candidates[Math.floor(Math.random() * candidates.length)];
-        landingCol = pick[0];
-        landingRow = pick[1];
-      } else {
-        // Fallback: land at the tile before the tree
-        landingCol = treeHit.col;
-        landingRow = treeHit.row;
-      }
-      // If the deflected tile is the same as where the golfer is standing,
-      // scatter to a random adjacent tile instead
-      if (landingCol === currentPos.col && landingRow === currentPos.row) {
-        const dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
-        const valid = dirs.filter(([dc, dr]) => {
-          const nc = currentPos.col + dc;
-          const nr = currentPos.row + dr;
-          return nc >= 0 && nc < GRID_COLS && nr >= 0 && nr < GRID_ROWS
-            && store.grid[nr][nc].type !== 'trees'
-            && store.grid[nr][nc].type !== 'water';
-        });
-        if (valid.length > 0) {
-          const [dc, dr] = valid[Math.floor(Math.random() * valid.length)];
-          landingCol = currentPos.col + dc;
-          landingRow = currentPos.row + dr;
-        }
-      }
       const gStore = golferStore.getState();
       const g = gStore.golfers.find((gg) => gg.id === golfer.id);
       if (g) {
         gStore.updateGolfer(golfer.id, { treeHits: g.treeHits + 1 });
       }
     }
-
-    const previousPos = { ...golfer.tilePos };
-
-    // Emit shot tracer
-    this.emitShotTracer(currentPos.col, currentPos.row, landingCol, landingRow);
 
     golferStore.getState().updateGolfer(golfer.id, {
       state: 'ball_flight',
@@ -2859,13 +2740,13 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     });
 
     // Get tile heights for ball flight arc
-    const fromHeight = store.grid[currentPos.row]?.[currentPos.col]?.height ?? 0;
+    const fromHeight = store.grid[previousPos.row]?.[previousPos.col]?.height ?? 0;
     const toHeight = store.grid[landingRow]?.[landingCol]?.height ?? 0;
 
     this.activeBalls.set(golfer.id, new Ball(
       this,
-      currentPos.col,
-      currentPos.row,
+      previousPos.col,
+      previousPos.row,
       landingCol,
       landingRow,
       this.OFFSET_X,
@@ -2875,50 +2756,6 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       fromHeight,
       toHeight,
     ));
-  }
-
-  private pickClubDistance(distanceToCup: number): number {
-    if (distanceToCup >= 15) return 8;
-    if (distanceToCup >= 10) return 6;
-    if (distanceToCup >= 6) return 4;
-    if (distanceToCup >= 3) return 2;
-    return 1;
-  }
-
-  /**
-   * Trace a line from (c1,r1) to (c2,r2) using Bresenham's line algorithm.
-   * Returns {col, row} of the LAST passable tile before a tree tile,
-   * or null if no tree is in the path.
-   */
-  private traceFlightPath(
-    c1: number, r1: number,
-    c2: number, r2: number,
-    grid: Tile[][]
-  ): { col: number; row: number } | null {
-    let lastGood: { col: number; row: number } | null = null;
-    const dx = Math.abs(c2 - c1);
-    const dy = Math.abs(r2 - r1);
-    const sx = c1 < c2 ? 1 : -1;
-    const sy = r1 < r2 ? 1 : -1;
-    let err = dx - dy;
-    let cx = c1;
-    let ry = r1;
-
-    while (cx !== c2 || ry !== r2) {
-      const e2 = 2 * err;
-      if (e2 > -dy) { err -= dy; cx += sx; }
-      if (e2 < dx) { err += dx; ry += sy; }
-
-      if (cx < 0 || cx >= GRID_COLS || ry < 0 || ry >= GRID_ROWS) break;
-
-      const tile = grid[ry][cx];
-      if (tile.type === 'trees') {
-        // Hit a tree — return the last good tile before it
-        return lastGood ?? { col: c1, row: r1 };
-      }
-      lastGood = { col: cx, row: ry };
-    }
-    return null;
   }
 
   /**
@@ -2975,13 +2812,6 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     const hole = store.holes.find((h) => h.id === golfer.currentHole);
     const cupPos = hole?.cup;
 
-    let newStrokes = golfer.strokes + 1;
-    let newState: 'reacting' | 'hole_complete' = 'reacting';
-    let stateTimer: number = GAME_CONFIG.BALL_LAND_REACT_TIME;
-    let newTilePos = { col: landingCol, row: landingRow };
-
-    const effect = TERRAIN_EFFECTS[tile.type];
-
     // SFX based on landing terrain
     if (tile.type === 'water') {
       this.musicScene.playSfx('splash');
@@ -2990,90 +2820,39 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       this.musicScene.playSfx('tree');
     }
 
+    // Use the pure landing resolution from GolferAI
+    const resolution = resolveLanding(landingCol, landingRow, previousPos, golfer, store.grid, cupPos || undefined);
+
+    // Track water/tree hits for reputation
     if (tile.type === 'water') {
-      newStrokes += 1;
-      newTilePos = previousPos;
-      stateTimer = GAME_CONFIG.WATER_REACT_TIME;
-      // Track water hit for reputation
       const g = gStore.golfers.find((gg) => gg.id === golferId);
       if (g) {
         gStore.updateGolfer(golferId, { waterHits: g.waterHits + 1 });
       }
     } else if (tile.type === 'trees') {
-      // Ball landed in trees — deflect back (can't play from tree tile)
-      newTilePos = previousPos;
-      stateTimer = GAME_CONFIG.TREE_REACT_TIME;
       const g = gStore.golfers.find((gg) => gg.id === golferId);
       if (g) {
         gStore.updateGolfer(golferId, { treeHits: g.treeHits + 1 });
       }
-    } else if (tile.type === 'green' && cupPos) {
-      const distToCup = Math.abs(landingCol - cupPos.col) + Math.abs(landingRow - cupPos.row);
-      // Accurate Putter: +50% putting range
-      const puttBonus = golfer.skills.some(s => s.name === 'Accurate Putter') ? 1.5 : 1.0;
-      const puttRange = Math.max(1, Math.round(golfer.skill * 3 * puttBonus));
+    }
 
-      if (distToCup <= puttRange) {
-        newTilePos = { col: cupPos.col, row: cupPos.row };
-        newState = 'hole_complete';
-        stateTimer = GAME_CONFIG.HOLE_OUT_TIME;
-        this.musicScene.playSfx('cup');
-      } else {
-        this.musicScene.playSfx('thwack');
-      }
-    } else {
-      // Landed on fairway, rough, or sand
+    // Play hole-out SFX if applicable
+    if (resolution.newState === 'hole_complete' && tile.type === 'green') {
+      this.musicScene.playSfx('cup');
+    } else if (tile.type !== 'water' && tile.type !== 'trees') {
       this.musicScene.playSfx('thwack');
     }
 
-    if (newStrokes >= MAX_STROKES_PER_HOLE) {
-      newState = 'hole_complete';
-      stateTimer = GAME_CONFIG.MAX_STROKES_TIME;
-    }
-
     gStore.updateGolfer(golferId, {
-      strokes: newStrokes,
-      state: newState,
-      stateTimer,
-      // Don't update tilePos here — let transitionToNext handle walking
-      // Store the landing position for walking
-      walkTarget: newState === 'reacting' ? newTilePos : null,
+      strokes: resolution.newStrokes,
+      state: resolution.newState,
+      stateTimer: resolution.stateTimer,
+      walkTarget: resolution.walkTarget,
     });
 
     // Trigger visual reaction based on what happened
-    const reactionType = this.determineReaction(tile.type, newStrokes, golfer, newState);
+    const reactionType = determineReaction(tile.type, resolution.newStrokes, hole?.par ?? 3, resolution.newState);
     this.triggerGolferReaction(golferId, reactionType);
-  }
-
-  /**
-   * Determine what kind of visual reaction the golfer should have.
-   */
-  private determineReaction(
-    tileType: string,
-    newStrokes: number,
-    golfer: Golfer,
-    nextState: string,
-  ): 'celebration' | 'frustration' | 'hole_complete_celebration' | 'hole_complete_pickup' | 'nod' {
-    // Hole-in-one or under par celebration
-    if (nextState === 'hole_complete') {
-      const hole = courseStore.getState().holes.find((h) => h.id === golfer.currentHole);
-      const par = hole?.par ?? 3;
-      if (newStrokes <= par - 2 || newStrokes === 1) return 'hole_complete_celebration';
-      if (newStrokes <= par) return 'celebration';
-      return 'hole_complete_pickup';
-    }
-    // Hit hazard — frustration
-    if (tileType === 'water' || tileType === 'trees') return 'frustration';
-    // Max strokes — frustration
-    if (newStrokes >= MAX_STROKES_PER_HOLE - 1) return 'frustration';
-    // Birdie or better
-    const hole = courseStore.getState().holes.find((h) => h.id === golfer.currentHole);
-    const par = hole?.par ?? 3;
-    if (newStrokes + 1 <= par - 1) return 'celebration';
-    // Par — nod
-    if (newStrokes + 1 <= par) return 'nod';
-    // Bogey+ — frustration
-    return 'frustration';
   }
 
   /**
