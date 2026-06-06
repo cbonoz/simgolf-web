@@ -95,6 +95,59 @@ function generateName(): string {
   return `${first} ${last}`;
 }
 
+/** Infer the 'natural' par for a hole given its Manhattan distance. */
+function expectedParForDistance(distance: number): number {
+  if (distance <= 3) return 2;
+  if (distance <= 8) return 3;
+  if (distance <= 14) return 4;
+  return 5;
+}
+
+/** Pick a hole-design reaction based on par-vs-distance mismatch. */
+function holeDesignThought(
+  hole: HoleConfig | undefined,
+  traitName: string | undefined,
+  skill: number,
+): string | null {
+  if (!hole?.tee || !hole?.cup) return null;
+  const dist = Math.abs(hole.cup.col - hole.tee.col) + Math.abs(hole.cup.row - hole.tee.row);
+  const expected = expectedParForDistance(dist);
+  const diff = hole.par - expected;
+  const hot = traitName === 'Hothead';
+  const grouch = traitName === 'Grouch';
+  const joker = traitName === 'Joker';
+  const showboat = traitName === 'Showboat';
+
+  // Unusually generous par for this distance
+  if (diff >= 2) {
+    // Only really good golfers appreciate a too-easy par; others find it patronising
+    if (hot) return 'Oh great, a pity par.';
+    if (grouch) return 'Almost impossible NOT to birdie this.';
+    if (joker) return 'My grandma could par this.';
+    if (skill >= 0.7) return 'Easy birdie opportunity.';
+    return 'Generous par for this hole.';
+  }
+  // Stingy par — shorter hole labelled longer
+  if (diff <= -2) {
+    if (hot) return "This par-#{par} is a JOKE!".replace('#{par}', String(hole.par));
+    if (grouch) return 'False advertising on the scorecard.';
+    if (joker) return 'Who put a par-#{par} on a pitch-and-putt?'.replace('#{par}', String(hole.par));
+    if (showboat) return 'Tight fairway? No problem for a pro like me.';
+    if (skill >= 0.7) return 'Tight pin placement. Smart design.';
+    return 'Man, this is a tough pin for the yardage.';
+  }
+  // Slightly off par (diff === 1 or -1)
+  if (diff === -1) {
+    if (hot) return 'Another tricky par. Typical.';
+    return 'Hmm, the tee shot is tight here.';
+  }
+  if (diff === 1) {
+    if (showboat) return 'Generous drive zone, perfect for my swing.';
+    return 'Good chance to score here.';
+  }
+  return null; // par matches distance — no comment
+}
+
 export function generateThought(golfer: Golfer, grid?: Tile[][], holes?: HoleConfig[]): string {
   const { state, strokes, currentHole, trait } = golfer;
   const hole = holes?.find((h) => h.id === currentHole);
@@ -103,6 +156,12 @@ export function generateThought(golfer: Golfer, grid?: Tile[][], holes?: HoleCon
   const showboat = trait?.name === 'Showboat';
   const grouch = trait?.name === 'Grouch';
   const joker = trait?.name === 'Joker';
+
+  // Hole-design reactions: comment on unfair holes when addressing or on teeing ground
+  if (state === 'addressing' && strokes === 0 && hole?.tee) {
+    const designThought = holeDesignThought(hole, trait?.name, golfer.skill);
+    if (designThought) return designThought;
+  }
 
   if (state === 'round_complete') {
     const totalPar = holes?.reduce((sum, h) => sum + h.par, 0) ?? 27;
