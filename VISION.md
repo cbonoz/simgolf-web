@@ -37,6 +37,7 @@ Cozy tycoon + sandbox builder. Think SimGolf meets Mini Metro meets Prison Archi
 - ~~Stats overlay with career tracking — hole-by-hole scorecard, career best/average, birdies/pars/bogeys~~ ✅
 - ~~More interesting stroke outcomes (bounces off trees with angle deflection, roll on fairway, plugged in sand)~~ ✅
 - ~~Terrain height editing (raised greens, lowered bunkers)~~ ✅
+- ~~Round-summary popup + fade-out when golfer returns to clubhouse — satisfaction emoji, score vs par, revenue earned~~ ✅
 
 ### Medium-term (mechanics that make it compelling)
 

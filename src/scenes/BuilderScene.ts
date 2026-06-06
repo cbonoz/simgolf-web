@@ -3488,18 +3488,81 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     // Record career stats for this golfer (keyed by name)
     golferStore.getState().recordGolferRound(golfer.name, golfer.scorecard, golfer.totalStrokes, coursePar);
 
+    // Show round-summary popup before removing the golfer
+    this.showRoundCompletePopup(golfer, scoreVsPar, roundRevenue, satisfaction, coursePar);
+
+    // Fade out and remove after a short delay for the popup to be seen
     const sprite = this.golferSprites.get(golfer.id);
     if (sprite) {
-      sprite.destroy();
-      this.golferSprites.delete(golfer.id);
+      this.tweens.add({
+        targets: sprite,
+        alpha: { from: 1, to: 0 },
+        scaleX: { from: sprite.scaleX, to: sprite.scaleX * 0.3 },
+        scaleY: { from: sprite.scaleY, to: sprite.scaleY * 0.3 },
+        duration: 1200,
+        ease: 'Sine.easeInOut',
+        onComplete: () => {
+          sprite.destroy();
+          this.golferSprites.delete(golfer.id);
+          const accSprite2 = this.accessorySprites.get(golfer.id);
+          if (accSprite2) {
+            accSprite2.destroy();
+            this.accessorySprites.delete(golfer.id);
+          }
+          this.removeBallSprite(golfer.id);
+          golferStore.getState().removeGolfer(golfer.id);
+        },
+      });
+    } else {
+      const accSprite = this.accessorySprites.get(golfer.id);
+      if (accSprite) {
+        accSprite.destroy();
+        this.accessorySprites.delete(golfer.id);
+      }
+      this.removeBallSprite(golfer.id);
+      golferStore.getState().removeGolfer(golfer.id);
     }
-    const accSprite = this.accessorySprites.get(golfer.id);
-    if (accSprite) {
-      accSprite.destroy();
-      this.accessorySprites.delete(golfer.id);
-    }
-    this.removeBallSprite(golfer.id);
-    golferStore.getState().removeGolfer(golfer.id);
+  }
+
+  /**
+   * Show a brief floating popup summarizing the golfer's completed round.
+   * Displays score vs par, revenue earned, and an emoji based on satisfaction.
+   */
+  private showRoundCompletePopup(golfer: Golfer, scoreVsPar: number, revenue: number, satisfaction: number, coursePar: number): void {
+    const sprite = this.golferSprites.get(golfer.id);
+    if (!sprite) return;
+
+    const emoji = satisfaction >= 4.5 ? '🏆' :
+      satisfaction >= 4.0 ? '😄' :
+      satisfaction >= 3.0 ? '😊' :
+      satisfaction >= 2.0 ? '😐' : '😣';
+
+    const scoreStr = formatVsPar(scoreVsPar);
+    const scoreColor = vsParColor(scoreVsPar);
+
+    const matrix = sprite.getWorldTransformMatrix();
+    const el = document.createElement('div');
+    el.style.cssText = `
+      position: fixed; z-index: 300; pointer-events: none;
+      font-family: sans-serif; text-align: center;
+      color: #fff; font-weight: bold; line-height: 1.4;
+      transition: opacity 2s ease-out, transform 2s ease-out;
+      left: ${matrix.tx}px; top: ${matrix.ty - 50}px;
+      transform: translate(-50%, 0);
+    `;
+    el.innerHTML = `
+      <div style="font-size: 28px;">${emoji}</div>
+      <div style="font-size: 14px; color: ${scoreColor};">${scoreStr} (${golfer.totalStrokes}/${coursePar})</div>
+      <div style="font-size: 13px; color: #4caf50;">+$${revenue}</div>
+    `;
+    document.body.appendChild(el);
+
+    // Float up and fade out
+    requestAnimationFrame(() => {
+      el.style.transform = 'translate(-50%, -60px)';
+      el.style.opacity = '0';
+    });
+    setTimeout(() => el.remove(), 2500);
   }
 
   shutdown(): void {
