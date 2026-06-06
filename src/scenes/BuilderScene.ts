@@ -3,7 +3,7 @@ import { courseStore, Tile, HoleConfig, PlacedBuilding, getClubhousePosition, ge
 import { golferStore, Golfer, generateThought } from '../state/golfers';
 import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, TERRAIN_EFFECTS, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
 import { GAME_CONFIG } from '../utils/gameConfig';
-import { tileToScreen, screenToTile, clampTile, calculatePar, totalCoursePar, countConfiguredHoles, formatVsPar, vsParColor } from '../utils/helpers';
+import { tileToScreen, screenToTile, clampTile, calculatePar, totalCoursePar, countConfiguredHoles, formatVsPar, vsParColor, getSkillTier } from '../utils/helpers';
 import { Ball } from '../entities/Ball';
 import { MusicScene } from './MusicScene';
 import { ChallengeMode, ChallengeHost, type ChallengeResultData, type SwingResult } from '../systems/ChallengeMode';
@@ -299,6 +299,13 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       }
     }
 
+    // Tier indicator dot — small colored circle above golfer's head
+    const tier = getSkillTier(golfer.skill);
+    const dot = this.add.circle(x, y - 22, 2.5, tier.dotColor);
+    dot.setDepth(this.getGolferDepth(golfer.tilePos.col, golfer.tilePos.row) + 0.02);
+    // Store on sprite for depth updates
+    (sprite as any)._tierDot = dot;
+
     return sprite;
   }
 
@@ -405,7 +412,12 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   // ChallengeHost: remove opponent sprite
   onOpponentRemoved(opponentId: number): void {
     const sprite = this.golferSprites.get(opponentId);
-    if (sprite) { sprite.destroy(); this.golferSprites.delete(opponentId); }
+    if (sprite) {
+      const dot = (sprite as any)._tierDot;
+      if (dot) dot.destroy();
+      sprite.destroy();
+      this.golferSprites.delete(opponentId);
+    }
     const accSprite = this.accessorySprites.get(opponentId);
     if (accSprite) { accSprite.destroy(); this.accessorySprites.delete(opponentId); }
   }
@@ -2472,7 +2484,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     // Current round stats with hole-by-hole scorecard
     const stats = document.createElement('div');
     stats.style.cssText = 'color: #ccc; font-size: 13px; margin-bottom: 6px;';
-    let scorecardHtml = `Skill: ${Math.round(golfer.skill * 100)}% | Hole ${golfer.currentHole}<br>Strokes: ${golfer.strokes} | Total: ${golfer.totalStrokes}`;
+    const tier = getSkillTier(golfer.skill);
+    let scorecardHtml = `<span style="color:${tier.color}">${tier.emoji} ${tier.label}</span> | Skill: ${Math.round(golfer.skill * 100)}% | Hole ${golfer.currentHole}<br>Strokes: ${golfer.strokes} | Total: ${golfer.totalStrokes}`;
     if (golfer.scorecard.length > 0) {
       const holesStr = golfer.scorecard.map((s, i) => {
         const h = store.holes.find((hh) => hh.id === i + 1);
@@ -3494,6 +3507,10 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     // Fade out and remove after a short delay for the popup to be seen
     const sprite = this.golferSprites.get(golfer.id);
     if (sprite) {
+      // Clean up tier dot
+      const dot = (sprite as any)._tierDot;
+      if (dot) dot.destroy();
+
       this.tweens.add({
         targets: sprite,
         alpha: { from: 1, to: 0 },

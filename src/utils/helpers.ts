@@ -85,3 +85,24 @@ export function vsParColor(diff: number): string {
   if (diff === 2) return '#e67e22';    // Double bogey — orange
   return '#e74c3c';                     // Triple+ — red
 }
+
+// === Skill tier system — visible labels for golfer skill levels ===
+
+export interface SkillTier {
+  label: string;
+  emoji: string;
+  color: string;   // CSS color for display
+  dotColor: number; // Phaser hex color for sprite indicator
+}
+
+/**
+ * Map a golfer's skill value (0.0–1.0) to a named tier.
+ * Tiers help players quickly identify a golfer's approximate ability.
+ */
+export function getSkillTier(skill: number): SkillTier {
+  if (skill >= 0.85) return { label: 'Champion', emoji: '🏆', color: '#ffd700', dotColor: 0xffd700 };
+  if (skill >= 0.7)  return { label: 'Pro',      emoji: '⛳', color: '#4ade80', dotColor: 0x4ade80 };
+  if (skill >= 0.55) return { label: 'Amateur',  emoji: '🏌️', color: '#60a5fa', dotColor: 0x60a5fa };
+  if (skill >= 0.4)  return { label: 'Hacker',   emoji: '🎲', color: '#fbbf24', dotColor: 0xfbbf24 };
+  return { label: 'Beginner', emoji: '🌱', color: '#a78bfa', dotColor: 0xa78bfa };
+}
