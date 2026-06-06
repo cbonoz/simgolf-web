@@ -185,6 +185,77 @@ export function generateThought(golfer: Golfer, grid?: Tile[][], holes?: HoleCon
   return 'Nice course layout.';
 }
 
+// === Procedural backstory generation ===
+const BACKSTORY_ORIGINS = [
+  'from a small coastal town',
+  'raised on a cattle ranch',
+  'former college athlete',
+  'retired school teacher',
+  'started golf at age 40',
+  'grew up on a driving range',
+  'former caddie',
+  'self-taught from YouTube tutorials',
+  'played in college',
+  'learned from a grandparent',
+  'army veteran',
+  'professional coach\'s kid',
+  'used to play baseball',
+  'moved here for the weather',
+  'started golf as a retirement hobby',
+  'took up golf for business networking',
+  'learned on a public course in the city',
+  'has a membership at three clubs',
+  'escaped the corporate world',
+  'spent years on tour buses',
+];
+
+const BACKSTORY_HABITS: Record<string, string[]> = {
+  'Cool': ['Never seen without a calm smile', 'Practices breathing between every shot', 'Often seen helping other golfers'],
+  'Hothead': ['Known to snap a pencil per round', 'Has broken three putters this season', 'Apologizes to the ball after every bad hit'],
+  'Showboat': ['Always waves to an imaginary crowd', 'Keeps a mirror in the golf bag', 'Celebrates pars like birdies'],
+  'Chatty': ['Talks to birds mid-swing', 'Names every club in the bag', 'Gives a running commentary to nobody'],
+  'Focused': ['Practiced the same putt for three hours', 'Counts steps between every shot', 'Ignores everything except the ball'],
+  'Lucky': ['Found a four-leaf clover before every round', 'Has a lucky ball marker from 1997', 'Wears mismatched socks for good luck'],
+  'Grouch': ['Complains about the grass length', 'Mutters about course design constantly', 'Blames the wind for every bad shot'],
+  'Joker': ['Keeps whoopee cushions in the bag', 'Does impressions of other golfers', 'Cracks jokes during backswings'],
+};
+
+const BACKSTORY_GOALS: string[] = [
+  'just wants to break 90',
+  'dreams of a hole-in-one',
+  'here to make new friends',
+  'competing against their personal best',
+  'trying to impress a retired pro',
+  'collecting souvenir scorecards',
+  'avoiding the spouse\'s to-do list',
+  'training for a charity tournament',
+  'hoping to qualify for the senior tour',
+  'settling a bet with a friend',
+  'keeping a promise to a late parent',
+  'testing out a new set of clubs',
+  'trying to finally beat their sibling',
+  'scouting the course for a book',
+  'building up stamina for 36 holes',
+];
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+export function generateBackstory(trait: GolferTrait, skills: GolferSkill[], bodyType: BodyType): string {
+  const origin = pick(BACKSTORY_ORIGINS);
+  const habitPart = pick(BACKSTORY_HABITS[trait.name] ?? ['Plays for the love of the game']);
+  const goal = pick(BACKSTORY_GOALS);
+
+  const bodyDesc: Record<BodyType, string> = {
+    slim: 'lean',
+    average: 'solid',
+    broad: 'powerful',
+  };
+
+  return `${bodyDesc[bodyType]}-built golfer ${origin}. ${habitPart}. ${goal}.`;
+}
+
 export type BodyType = 'slim' | 'average' | 'broad';
 export type Accessory = 'none' | 'glasses' | 'visor' | 'mustache';
 
@@ -213,6 +284,7 @@ export interface Golfer {
   // New personality & skills
   trait: GolferTrait;
   skills: GolferSkill[];
+  backstory: string; // procedural flavor text
 }
 
 export interface GolferCareerStats {
@@ -250,12 +322,13 @@ export const golferStore = createStore<GolferStoreState>()((set, get) => ({
     const skill = 0.3 + Math.random() * 0.6;
     const trait = randomTrait();
     const skills = randomSkills();
+    const bodyType = BODY_TYPES[Math.floor(Math.random() * BODY_TYPES.length)];
     const golfer: Golfer = {
       id: state.nextId,
       name: generateName(),
       skill: Math.round(skill * 100) / 100,
       colorIndex: Math.floor(Math.random() * 8),
-      bodyType: BODY_TYPES[Math.floor(Math.random() * BODY_TYPES.length)],
+      bodyType,
       accessory: ACCESSORIES[Math.floor(Math.random() * ACCESSORIES.length)],
       currentHole: 1,
       tilePos: { col: startCol, row: startRow },
@@ -271,6 +344,7 @@ export const golferStore = createStore<GolferStoreState>()((set, get) => ({
       treeHits: 0,
       trait,
       skills,
+      backstory: generateBackstory(trait, skills, bodyType),
     };
 
     set({

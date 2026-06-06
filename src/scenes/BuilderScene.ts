@@ -2501,6 +2501,14 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       tooltip.appendChild(career);
     }
 
+    // Backstory flavor text
+    if (golfer.backstory) {
+      const backstoryEl = document.createElement('div');
+      backstoryEl.textContent = `📖 ${golfer.backstory}`;
+      backstoryEl.style.cssText = 'color: #aaa; font-size: 12px; border-top: 1px solid #444; padding-top: 6px; margin-top: 4px; font-style: italic;';
+      tooltip.appendChild(backstoryEl);
+    }
+
     const thoughtEl = document.createElement('div');
     thoughtEl.textContent = `\u{1F4AD} "${thought}"`;
     thoughtEl.style.cssText = 'color: #a8d8a8; font-style: italic; margin-top: 8px; font-size: 13px;';
