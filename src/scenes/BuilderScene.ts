@@ -9,6 +9,7 @@ import { MusicScene } from './MusicScene';
 import { ChallengeMode, ChallengeHost, type ChallengeResultData, type SwingResult } from '../systems/ChallengeMode';
 import { DayCycle, type DayCycleHost } from '../systems/DayCycle';
 import { SceneUI, type SceneUIHost } from '../systems/SceneUI';
+import { EconomyTick, type EconomyTickHost } from '../systems/EconomyTick';
 
 type CourseSnapshot = {
   grid: Tile[][];
@@ -16,7 +17,7 @@ type CourseSnapshot = {
   money: number;
 };
 
-export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycleHost, SceneUIHost {
+export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycleHost, SceneUIHost, EconomyTickHost {
   private tileSprites: Phaser.GameObjects.Sprite[][] = [];
   private cursor!: Phaser.GameObjects.Sprite;
   private debugText!: Phaser.GameObjects.Text;
@@ -28,7 +29,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private terrainPalette!: HTMLDivElement;
   private moneyDisplay!: HTMLDivElement;
-  private revenueIndicatorEl!: HTMLDivElement;
+  revenueIndicatorEl!: HTMLDivElement;
   private helpText!: HTMLDivElement;
 
   // Height mode: raise (+1) or lower (-1)
@@ -39,6 +40,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
 
   // Day/night cycle + economy — extracted to DayCycle module
   private dayCycle = new DayCycle(this);
+
+  // Economy tick (revenue/decor timer) — extracted to EconomyTick module
+  private economyTick = new EconomyTick(this, this.dayCycle);
 
   // Scene UI (golfer panel) — extracted to SceneUI module
   private sceneUI = new SceneUI(this);
@@ -2176,6 +2180,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     }
   }
 
+  /** Refresh money display for EconomyTickHost interface. Delegates to updateMoneyDisplay. */
+  refreshMoneyDisplay(): void {
+    this.updateMoneyDisplay();
+  }
+
   update(time: number, delta: number): void {
     // Keyboard camera pan — skip full update if challenge active handles separately
     if (this.cursors) {
@@ -2242,13 +2251,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       this.dayCycle.update(gameTimeMinutes);
     }
 
-    // Building revenue tick + decor reputation bonuses (via DayCycle)
-    this.dayCycle.revenueTickTimer += scaledDelta;
-    if (this.dayCycle.revenueTickTimer >= this.dayCycle.REVENUE_TICK_INTERVAL) {
-      this.dayCycle.revenueTickTimer = 0;
-      this.dayCycle.processRevenueTick(this.revenueIndicatorEl, () => this.updateMoneyDisplay());
-      this.dayCycle.processDecorBonuses(this.revenueIndicatorEl);
-    }
+    // Building revenue tick + decor reputation bonuses (via EconomyTick)
+    this.economyTick.update(scaledDelta);
 
     // Update ball flights (per-golfer, supports simultaneous swings)
     for (const [golferId, ball] of this.activeBalls) {

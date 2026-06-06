@@ -33,10 +33,6 @@ export class DayCycle {
   nightTransitionReady = false;
   nightTransitionEl: HTMLDivElement | null = null;
 
-  // Revenue tick
-  revenueTickTimer = 0;
-  readonly REVENUE_TICK_INTERVAL = 30000; // ms at 1x scale (30 game seconds)
-
   // Day phase → spawn parameters
   spawnInterval: number = GAME_CONFIG.SPAWN_INTERVAL;
   maxGolfers: number = GAME_CONFIG.MAX_GOLFERS;
