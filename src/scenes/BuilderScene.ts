@@ -1607,18 +1607,66 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     document.body.appendChild(overlay);
   }
 
+  /** Pool of active toast DOM elements for stacking */
+  private activeToasts: HTMLDivElement[] = [];
+  private readonly TOAST_DURATION = 2500;
+  private readonly TOAST_GAP = 6;
+  private readonly TOAST_TOP_START = 12;
+
+  /**
+   * Show a temporary toast message that stacks at top-center.
+   * Infers severity from message content for color-coded borders.
+   * Slides in from above and slides out when dismissed.
+   */
   showTemporaryMessage(msg: string): void {
+    // Infer severity from message content
+    const isError = /can'?t|not enough|error|denied|occupied|already/i.test(msg);
+    const isWarning = /need|refunded|penalty|max/i.test(msg);
+    const isMoney = /\+?\$\d/.test(msg);
+    const borderColor = isError ? '#c62828' : isWarning ? '#e65100' : isMoney ? '#4caf50' : '#4a8f3f';
+
     const toast = document.createElement('div');
     toast.className = 'builder-toast';
     toast.textContent = msg;
     toast.style.cssText = `
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      background: rgba(0,0,0,0.85); color: #fff; padding: 12px 24px; border-radius: 8px;
-      font-family: sans-serif; font-size: 16px; z-index: 300;
-      border: 2px solid #4a8f3f; animation: fadeIn 0.2s;
+      position: fixed; left: 50%; z-index: 300;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.88); color: #fff;
+      padding: 8px 18px; border-radius: 6px;
+      font-family: sans-serif; font-size: 14px;
+      border: 1.5px solid ${borderColor};
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease-out, transform 0.25s ease-out;
     `;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2500);
+
+    // Reposition all active toasts (including this new one)
+    this.repositionToasts();
+    this.activeToasts.push(toast);
+
+    // Fade in
+    requestAnimationFrame(() => { toast.style.opacity = '1'; });
+
+    // Dismiss after duration
+    const dismiss = () => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) translateY(-16px)';
+      const idx = this.activeToasts.indexOf(toast);
+      if (idx >= 0) this.activeToasts.splice(idx, 1);
+      this.repositionToasts();
+      setTimeout(() => toast.remove(), 250);
+    };
+    setTimeout(dismiss, this.TOAST_DURATION);
+  }
+
+  /** Re-stack all active toasts vertically from top-center */
+  private repositionToasts(): void {
+    let top = this.TOAST_TOP_START;
+    for (const t of this.activeToasts) {
+      t.style.top = `${top}px`;
+      top += t.offsetHeight + this.TOAST_GAP;
+    }
   }
 
   formatGameTimeDisplay(minutes: number): string {
