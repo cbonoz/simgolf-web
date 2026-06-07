@@ -467,6 +467,8 @@ export class BootScene extends Phaser.Scene {
       const cw = w / 2;
       const ch = h * 0.3;
 
+      // === Distinct building silhouettes based on key ===
+
       // Building body
       g.fillStyle(bldColor, 1);
       g.beginPath();
@@ -493,22 +495,99 @@ export class BootScene extends Phaser.Scene {
       g.closePath();
       g.fillPath();
 
-      // Roof
-      g.fillStyle(roofColor, 1);
-      g.beginPath();
-      g.moveTo(cw, ch - h * 0.2);
-      g.lineTo(cw + w * 0.45, ch + h * 0.05);
-      g.lineTo(cw, ch + h * 0.3);
-      g.lineTo(cw - w * 0.45, ch + h * 0.05);
-      g.closePath();
-      g.fillPath();
+      // === Roof type per building ===
+      if (bld.key === 'clubhouse') {
+        // Tall A-frame roof with chimney
+        g.fillStyle(roofColor, 1);
+        g.beginPath();
+        g.moveTo(cw, ch - h * 0.35);
+        g.lineTo(cw + w * 0.5, ch + h * 0.05);
+        g.lineTo(cw, ch + h * 0.3);
+        g.lineTo(cw - w * 0.5, ch + h * 0.05);
+        g.closePath();
+        g.fillPath();
+        // Chimney
+        g.fillStyle(0x555555, 0.9);
+        g.fillRect(cw + w * 0.15, ch - h * 0.3, 6, h * 0.25);
+        g.fillStyle(0x666666, 0.8);
+        g.fillRect(cw + w * 0.13, ch - h * 0.35, 10, 4);
+        // Extra smoke detail
+        g.fillStyle(0x888888, 0.3);
+        g.fillCircle(cw + w * 0.18, ch - h * 0.38, 3);
+      } else if (bld.key === 'shop') {
+        // Flat roof with sign board
+        g.fillStyle(roofColor, 1);
+        g.beginPath();
+        g.moveTo(cw, ch - h * 0.15);
+        g.lineTo(cw + w * 0.45, ch + h * 0.05);
+        g.lineTo(cw, ch + h * 0.3);
+        g.lineTo(cw - w * 0.45, ch + h * 0.05);
+        g.closePath();
+        g.fillPath();
+        // Sign board extending out
+        g.fillStyle(0xffd700, 0.7);
+        g.beginPath();
+        g.moveTo(cw - w * 0.25, ch + h * 0.15);
+        g.lineTo(cw - w * 0.35, ch + h * 0.1);
+        g.lineTo(cw - w * 0.35, ch + h * 0.05);
+        g.lineTo(cw - w * 0.25, ch + h * 0.1);
+        g.closePath();
+        g.fillPath();
+      } else if (bld.key === 'snack_bar') {
+        // Angled awning roof
+        g.fillStyle(roofColor, 1);
+        g.beginPath();
+        g.moveTo(cw, ch - h * 0.2);
+        g.lineTo(cw + w * 0.45, ch + h * 0.05);
+        g.lineTo(cw, ch + h * 0.2);
+        g.lineTo(cw - w * 0.45, ch + h * 0.05);
+        g.closePath();
+        g.fillPath();
+        // Awning stripes
+        g.fillStyle(0xffffff, 0.2);
+        g.fillRect(cw - w * 0.3, ch + h * 0.08, 4, h * 0.08);
+        g.fillRect(cw - w * 0.1, ch + h * 0.08, 4, h * 0.08);
+        g.fillRect(cw + w * 0.1, ch + h * 0.08, 4, h * 0.08);
+      } else if (bld.key === 'fountain') {
+        // Dome/tiered roof — blueish
+        g.fillStyle(0x5b9bd5, 1);
+        g.beginPath();
+        g.moveTo(cw, ch - h * 0.15);
+        g.lineTo(cw + w * 0.35, ch + h * 0.02);
+        g.lineTo(cw + w * 0.35, ch + h * 0.15);
+        g.lineTo(cw, ch + h * 0.3);
+        g.lineTo(cw - w * 0.35, ch + h * 0.15);
+        g.lineTo(cw - w * 0.35, ch + h * 0.02);
+        g.closePath();
+        g.fillPath();
+        // Water spout
+        g.fillStyle(0x87ceeb, 0.6);
+        g.fillCircle(cw, ch + h * 0.15, 3);
+        g.fillStyle(0x87ceeb, 0.3);
+        g.fillCircle(cw, ch, 4);
+      } else if (bld.key === 'bench') {
+        // Simple flat sloped roof
+        g.fillStyle(roofColor, 1);
+        g.beginPath();
+        g.moveTo(cw, ch - h * 0.1);
+        g.lineTo(cw + w * 0.4, ch + h * 0.05);
+        g.lineTo(cw, ch + h * 0.2);
+        g.lineTo(cw - w * 0.4, ch + h * 0.05);
+        g.closePath();
+        g.fillPath();
+      } else {
+        // Default gabled roof (garden, etc.)
+        g.fillStyle(roofColor, 1);
+        g.beginPath();
+        g.moveTo(cw, ch - h * 0.2);
+        g.lineTo(cw + w * 0.45, ch + h * 0.05);
+        g.lineTo(cw, ch + h * 0.3);
+        g.lineTo(cw - w * 0.45, ch + h * 0.05);
+        g.closePath();
+        g.fillPath();
+      }
 
-      g.lineStyle(2, 0xffffff, 0.2);
-      g.beginPath();
-      g.moveTo(cw, ch - h * 0.2);
-      g.lineTo(cw - w * 0.45, ch + h * 0.05);
-      g.strokePath();
-
+      // Roof trim line
       g.lineStyle(2, trimColor, 0.8);
       g.beginPath();
       g.moveTo(cw - w * 0.4, ch + h * 0.05);

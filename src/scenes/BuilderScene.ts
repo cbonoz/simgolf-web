@@ -404,6 +404,22 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   // ChallengeHost: create the player marker sprite + pulsing tween
   onChallengeStarted(col: number, row: number): void {
     this.terrainPalette.style.display = 'none';
+    // Create persistent orange ball marker at player position
+    const pos = this.tileToWorld(col, row);
+    this.playerMarker = this.add.sprite(pos.x, pos.y - 4, 'ball_player');
+    this.playerMarker.setOrigin(0.5, 0.5);
+    this.playerMarker.setDepth(9996);
+    this.playerMarker.setScale(1.0);
+    // Pulsing glow effect
+    this.tweens.add({
+      targets: this.playerMarker,
+      scale: { from: 0.8, to: 1.2 },
+      alpha: { from: 0.6, to: 1 },
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
   }
 
   // ChallengeHost: spawn opponent sprite
@@ -3036,18 +3052,15 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       scoreVsPar <= 2 ? '😐' :
       scoreVsPar <= 4 ? '😣' : '😡';
 
-    const sprite = this.golferSprites.get(golfer.id);
-    if (!sprite) return;
-
-    // Use the sprite's actual world position (handles lerp + camera zoom/scroll)
-    const matrix = sprite.getWorldTransformMatrix();
+    // Use the golfer's tile position to place the popup
+    const pos = this.tileToWorld(golfer.tilePos.col, golfer.tilePos.row);
     const el = document.createElement('div');
     el.style.cssText = `
       position: fixed; z-index: 300; pointer-events: none;
       font-family: sans-serif; font-size: 20px; text-align: center;
       color: #fff; font-weight: bold; line-height: 1.3;
       transition: opacity 2s ease-out, transform 2s ease-out;
-      left: ${matrix.tx}px; top: ${matrix.ty - 30}px;
+      left: ${pos.x}px; top: ${pos.y - 30}px;
       transform: translate(-50%, 0);
     `;
     el.innerHTML = `${emoji}<br><span style="font-size:14px;color:#4caf50;">+$${greensFee}</span>`;

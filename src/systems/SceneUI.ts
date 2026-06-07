@@ -150,9 +150,9 @@ export class SceneUI {
     this.challengeBtn.addEventListener('click', () => this.host.onChallengeClicked());
     panel.appendChild(this.challengeBtn);
 
-    // Auto-follow toggle button
+    // Auto-follow camera toggle
     const autoFollowBtn = document.createElement('button');
-    autoFollowBtn.textContent = this.host.isAutoFollowEnabled() ? '📷 Follow: ON' : '📷 Follow: OFF';
+    autoFollowBtn.textContent = this.host.isAutoFollowEnabled() ? '🎯 Auto Cam: ON' : '🎯 Auto Cam: OFF';
     autoFollowBtn.style.cssText = `
       margin-top: 4px; padding: 6px; border: 2px solid #555; border-radius: 6px;
       cursor: pointer; font-size: 11px; background: ${this.host.isAutoFollowEnabled() ? '#2d6a2d' : '#333'};
@@ -162,7 +162,7 @@ export class SceneUI {
     autoFollowBtn.addEventListener('click', () => {
       this.host.onToggleAutoFollow();
       const on = this.host.isAutoFollowEnabled();
-      autoFollowBtn.textContent = on ? '📷 Follow: ON' : '📷 Follow: OFF';
+      autoFollowBtn.textContent = on ? '🎯 Auto Cam: ON' : '🎯 Auto Cam: OFF';
       autoFollowBtn.style.background = on ? '#2d6a2d' : '#333';
       autoFollowBtn.style.color = on ? '#8f8' : '#999';
     });
