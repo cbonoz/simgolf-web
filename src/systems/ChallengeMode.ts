@@ -237,11 +237,21 @@ export class ChallengeMode {
 
     const currentTileType = currentTile.type as TerrainType;
     const effect = TERRAIN_EFFECTS[currentTileType] || { lieQuality: 0.5, distanceModifier: 0.5 };
+
+    // Elevation bonus/penalty: height difference between player and aim tile
+    const playerHeight = store.grid[this.playerRow][this.playerCol]?.height ?? 0;
+    const aimHeightCol = Math.max(0, Math.min(GRID_COLS - 1, aimCol));
+    const aimHeightRow = Math.max(0, Math.min(GRID_ROWS - 1, aimRow));
+    const aimHeight = store.grid[aimHeightRow][aimHeightCol]?.height ?? 0;
+    const heightDiff = playerHeight - aimHeight; // positive = shooting downhill
+    // Each height unit of difference adds/subtracts 0.5 tiles of effective distance
+    const elevationMod = 1 + heightDiff * 0.05;
+
     const accuracy = effect.lieQuality * (1 - maxDistance * 0.03);
     const maxScatter = (1 - Math.max(0.1, accuracy)) * 1.5;
     const scatterAngle = (Math.random() - 0.5) * 2 * maxScatter;
     const distanceMod = effect.distanceModifier * (0.85 + Math.random() * 0.3);
-    const effectiveSteps = Math.round(maxDistance * distanceMod);
+    const effectiveSteps = Math.round(maxDistance * distanceMod * elevationMod);
 
     const cosAngle = Math.cos(scatterAngle);
     const sinAngle = Math.sin(scatterAngle);

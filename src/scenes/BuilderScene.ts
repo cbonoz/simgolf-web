@@ -54,8 +54,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   private playerMarker: Phaser.GameObjects.Sprite | null = null;
   private playerBall: Ball | null = null;
   private lastPlayerBallSprite: Phaser.GameObjects.Sprite | null = null;
-
-  // Hole mode
+  private challengeTileInfoEl: HTMLDivElement | null = null;
+  private challengeScorecardEl: HTMLDivElement | null = null;
+  private playerWalkTarget: { col: number; row: number } | null = null;
   private builderMode: 'paint' | 'hole' | 'height' | 'buildings' | 'none' = 'paint';
   private selectedHoleId: number = 1;
   private teeSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
@@ -475,6 +476,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     if (this.playerMarker) { this.playerMarker.destroy(); this.playerMarker = null; }
     if (this.playerBall) { this.playerBall.removeSprite(); this.playerBall = null; }
     if (this.lastPlayerBallSprite) { this.lastPlayerBallSprite.destroy(); this.lastPlayerBallSprite = null; }
+    if (this.challengeTileInfoEl) { this.challengeTileInfoEl.remove(); this.challengeTileInfoEl = null; }
   }
 
   // ChallengeHost: update player marker position
@@ -658,6 +660,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
           this.lastPlayerBallSprite.destroy();
           this.lastPlayerBallSprite = null;
         }
+
+        // Emit shot tracer for the player's shot
+        this.emitShotTracer(result.fromCol, result.fromRow, result.landingCol, result.landingRow);
 
         // Create ball flight animation
         const maxArc = result.isGreen ? 600 : 500;
@@ -1093,6 +1098,41 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
         const barColor = power < 0.5 ? '#4caf50' : power < 0.8 ? '#ff9800' : '#f44336';
         this.powerBar.innerHTML = `<div style="height:100%;width:${power * 100}%;background:${barColor};border-radius:4px;transition:width 0.05s;position:absolute;left:0;top:0;"></div><span style="position:relative;z-index:106;font-weight:bold;">Power: ${pct}%</span>`;
         return;
+      }
+
+      // Challenge mode: show tile info tooltip on hover
+      if (this.challenge.active && this.challenge.playerState === 'addressing') {
+        const tile = this.worldToTile(pointer.worldX, pointer.worldY);
+        const store = courseStore.getState();
+        const gridTile = store.grid[tile.row]?.[tile.col];
+        if (gridTile) {
+          const hole = store.holes.find((h) => h.id === this.challenge.playerCurrentHole);
+          const cupDist = hole?.cup ? Math.abs(tile.col - hole.cup.col) + Math.abs(tile.row - hole.cup.row) : -1;
+          const fromPlayer = Math.abs(tile.col - this.challenge.playerCol) + Math.abs(tile.row - this.challenge.playerRow);
+          const terrainLabel = gridTile.type.charAt(0).toUpperCase() + gridTile.type.slice(1);
+          const height = gridTile.height ?? 0;
+          if (!this.challengeTileInfoEl) {
+            this.challengeTileInfoEl = document.createElement('div');
+            this.challengeTileInfoEl.id = 'challenge-tile-info';
+            this.challengeTileInfoEl.style.cssText = `
+              position: fixed; z-index: 105; pointer-events: none;
+              background: rgba(0,0,0,0.8); border-radius: 6px; padding: 4px 8px;
+              color: #fff; font-family: sans-serif; font-size: 11px; line-height: 1.4;
+              border: 1px solid #555;
+            `;
+            document.body.appendChild(this.challengeTileInfoEl);
+          }
+          this.challengeTileInfoEl.style.left = `${pointer.x + 15}px`;
+          this.challengeTileInfoEl.style.top = `${pointer.y - 10}px`;
+          const cupStr = cupDist >= 0 ? `⛳ ${cupDist} tiles` : '';
+          const floorStr = height !== 0 ? ` (${height > 0 ? '+' : ''}${height})` : '';
+          const scatStr = fromPlayer <= 3 ? '' : fromPlayer <= 8 ? ' · 🟡 5-8t' : ' · 🔴 9+t';
+          this.challengeTileInfoEl.innerHTML = `<strong>${terrainLabel}</strong>${floorStr} · ${fromPlayer}t from you${scatStr}${cupStr ? ' · ' + cupStr : ''}`;
+        } else if (this.challengeTileInfoEl) {
+          this.challengeTileInfoEl.style.display = 'none';
+        }
+      } else if (this.challengeTileInfoEl) {
+        this.challengeTileInfoEl.style.display = 'none';
       }
 
       // Panning with right button held

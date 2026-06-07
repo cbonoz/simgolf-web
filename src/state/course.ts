@@ -8,6 +8,7 @@ export interface Tile {
   isTee: boolean;
   isCup: boolean;
   vegetation: string | null; // sprite key for vegetation overlay
+  decor: string | null; // sprite key for decorative item
   height: number; // -10 to +10 elevation
 }
 
@@ -77,6 +78,7 @@ export interface CourseState {
   setTileHeight: (col: number, row: number, height: number) => void;
   adjustHeight: (col: number, row: number, delta: number) => void;
   setVegetation: (col: number, row: number, vegetation: string | null) => void;
+  setDecor: (col: number, row: number, decor: string | null) => void;
   setTee: (holeId: number, col: number, row: number) => void;
   setCup: (holeId: number, col: number, row: number) => void;
   setPar: (holeId: number, par: number) => void;
@@ -130,6 +132,7 @@ function createEmptyGrid(): Tile[][] {
         isTee: false,
         isCup: false,
         vegetation: null,
+        decor: null,
         height: 0,
       };
     }

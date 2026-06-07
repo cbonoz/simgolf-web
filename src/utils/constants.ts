@@ -85,6 +85,36 @@ export const VEGETATION_TYPES: VegetationType[] = [
   { key: 'cactus02', name: 'Cactus B', cost: 20, category: 'Cactus' },
 ];
 
+// Decor item types (non-building decorations)
+export interface DecorType {
+  key: string;
+  name: string;
+  cost: number;
+  category: string;
+}
+
+export const DECOR_TYPES: DecorType[] = [
+  // Flowers (colorful small clusters)
+  { key: 'flowers_red', name: 'Red Flowers', cost: 10, category: 'flowers' },
+  { key: 'flowers_yellow', name: 'Yellow Flowers', cost: 10, category: 'flowers' },
+  { key: 'flowers_purple', name: 'Purple Flowers', cost: 12, category: 'flowers' },
+  { key: 'flowers_mixed', name: 'Mixed Flowers', cost: 15, category: 'flowers' },
+  // Rocks
+  { key: 'rock_small', name: 'Small Rock', cost: 5, category: 'rock' },
+  { key: 'rock_large', name: 'Large Rock', cost: 12, category: 'rock' },
+  { key: 'rock_moss', name: 'Mossy Rock', cost: 8, category: 'rock' },
+  // Sign
+  { key: 'sign_wooden', name: 'Wooden Sign', cost: 20, category: 'sign' },
+  { key: 'sign_stone', name: 'Stone Sign', cost: 30, category: 'sign' },
+  // Bench (small bench, fits on 1 tile unlike the 1x1 building bench)
+  { key: 'bench_decor', name: 'Small Bench', cost: 25, category: 'bench' },
+  // Other
+  { key: 'mushroom_red', name: 'Red Mushroom', cost: 7, category: 'fungi' },
+  { key: 'mushroom_brown', name: 'Brown Mushroom', cost: 5, category: 'fungi' },
+  { key: 'stump', name: 'Tree Stump', cost: 8, category: 'wood' },
+  { key: 'lantern', name: 'Lantern', cost: 22, category: 'light' },
+];
+
 // Terrain gameplay properties (for SimGolf play mode)
 export interface TerrainEffect {
   lieQuality: number; // 0.0-1.0, affects accuracy
