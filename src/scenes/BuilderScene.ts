@@ -2176,7 +2176,9 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       const netColor = net >= 0 ? '#81c784' : '#ef5350';
       lines.push(`Net: <span style="color:${netColor};">$${net.toLocaleString()}</span>`);
       const repMult = Math.round(store.getReputationMultiplier() * 100);
+      const ratingMult = Math.round(store.getCourseRatingMultiplier() * 100);
       lines.push(`Reputation: <span style="color:#ffd700;">${store.reputation.toFixed(1)} ★</span> (${repMult}% fees)`);
+      lines.push(`Course Rating: <span style="color:#81c784;">${ratingMult}% fees</span>`);
       debtInfo.innerHTML = lines.join('<br>');
     }
   }
@@ -3102,12 +3104,13 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   private transitionToNextHole(golfer: Golfer): void {
     const store = courseStore.getState();
 
-    // Greens fee per hole (base $5 + par bonus), scaled by reputation
+    // Greens fee per hole (base $5 + par bonus), scaled by reputation + course rating
     const hole = store.holes.find((h) => h.id === golfer.currentHole);
     const par = hole?.par ?? 3;
     const baseGreensFee = 5 + par; // $8 for par-3, $9 for par-4, $10 for par-5
     const repMult = store.getReputationMultiplier();
-    const greensFee = Math.round(baseGreensFee * repMult);
+    const ratingMult = store.getCourseRatingMultiplier();
+    const greensFee = Math.round(baseGreensFee * repMult * ratingMult);
     store.addRevenue(greensFee);
 
     // Show floating emoji + greens fee popup over this golfer

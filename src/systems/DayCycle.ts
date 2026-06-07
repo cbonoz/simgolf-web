@@ -114,12 +114,14 @@ export class DayCycle {
   processRevenueTick(revenueIndicatorEl: HTMLDivElement | null, updateMoneyDisplay: () => void): void {
     const store = courseStore.getState();
     const repMult = store.getReputationMultiplier();
+    const ratingMult = store.getCourseRatingMultiplier();
+    const combinedMult = repMult * ratingMult;
     let totalRevenue = 0;
     for (const bld of store.buildings) {
       const bt = BUILDING_TYPES.find((b) => b.key === bld.typeKey);
       if (!bt || bt.category !== 'revenue') continue;
       const rate = bt.key === 'clubhouse' ? 50 : bt.key === 'shop' ? 25 : bt.key === 'snack_bar' ? 15 : 0;
-      totalRevenue += Math.round(rate * repMult);
+      totalRevenue += Math.round(rate * combinedMult);
     }
     if (totalRevenue > 0) {
       store.addRevenue(totalRevenue);

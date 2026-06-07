@@ -1,6 +1,13 @@
 import { courseStore } from '../state/course';
 import { golferStore, generateThought } from '../state/golfers';
-import { totalCoursePar, countConfiguredHoles, formatVsPar, vsParColor } from '../utils/helpers';
+import {
+  totalCoursePar,
+  countConfiguredHoles,
+  formatVsPar,
+  vsParColor,
+  computeCourseStats,
+  computeCourseRating,
+} from '../utils/helpers';
 
 /**
  * Host interface: methods the BuilderScene must provide for SceneUI.
@@ -36,6 +43,7 @@ export class SceneUI {
   private scorecardEl!: HTMLDivElement;
   private courseRecordEl!: HTMLDivElement;
   private courseAvgEl!: HTMLDivElement;
+  private courseStatsEl!: HTMLDivElement;
   private challengeBtn!: HTMLButtonElement;
 
   private host: SceneUIHost;
@@ -119,6 +127,12 @@ export class SceneUI {
     this.courseAvgEl.style.cssText = 'color: #aaa; font-size: 10px; margin-top: 1px;';
     this.courseAvgEl.textContent = '';
     panel.appendChild(this.courseAvgEl);
+
+    // Course stats + rating display
+    this.courseStatsEl = document.createElement('div');
+    this.courseStatsEl.style.cssText = 'color: #888; font-size: 9px; margin-top: 2px; line-height: 1.3;';
+    this.courseStatsEl.textContent = '';
+    panel.appendChild(this.courseStatsEl);
 
     // Scorecard
     this.scorecardEl = document.createElement('div');
@@ -285,6 +299,16 @@ export class SceneUI {
     } else {
       this.courseAvgEl.textContent = '';
     }
+
+    // Course stats + rating
+    const cStats = computeCourseStats(store.grid, store.holes, store.buildings);
+    const rating = computeCourseRating(cStats);
+    const stars = '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating));
+    const starColor = rating >= 4.0 ? '#ffd700' : rating >= 3.0 ? '#f0c27a' : '#aaa';
+    this.courseStatsEl.innerHTML = `🌟 <span style="color:${starColor};">${stars}</span> ${rating.toFixed(1)}<br>` +
+      `<span style="color:#888;">⛳ ${cStats.holesConfigured} holes · Par ${cStats.totalPar}</span><br>` +
+      `<span style="color:#4fc3f7;">💧 ${cStats.waterTiles} water</span> · <span style="color:#f0c27a;">🏖️ ${cStats.sandTiles} sand</span>` +
+      (cStats.decorBuildings > 0 ? ` · <span style="color:#81c784;">🌿 ${cStats.decorBuildings} decor</span>` : '');
   }
 
   /** Clean up DOM elements */

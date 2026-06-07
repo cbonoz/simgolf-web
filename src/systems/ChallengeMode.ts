@@ -347,7 +347,8 @@ export class ChallengeMode {
 
     const basePrize = tie ? 100 : 200;
     const repMult = store.getReputationMultiplier();
-    const prize = Math.round(basePrize * repMult);
+    const ratingMult = store.getCourseRatingMultiplier();
+    const prize = Math.round(basePrize * repMult * ratingMult);
 
     store.addMoney(prize);
 

@@ -32,13 +32,17 @@ Cozy tycoon + sandbox builder. Think SimGolf meets Mini Metro meets Prison Archi
 - ✅ Water shimmer animation
 - ✅ Tree clustering + procedural shadows
 
-**Next — gameplay depth**
-- ~~Golfer variety: different body shapes, colors, accessories — they should feel like characters~~ ✅
-- ~~Stats overlay with career tracking — hole-by-hole scorecard, career best/average, birdies/pars/bogeys~~ ✅
-- ~~More interesting stroke outcomes (bounces off trees with angle deflection, roll on fairway, plugged in sand)~~ ✅
-- ~~Terrain height editing (raised greens, lowered bunkers)~~ ✅
-- ~~Round-summary popup + fade-out when golfer returns to clubhouse — satisfaction emoji, score vs par, revenue earned~~ ✅
-- ~~Sand hazard penalty — bunker landings incur a stroke penalty + frustration reaction~~ ✅
+|**Next — gameplay depth** ✅
+|- ~~Golfer variety: different body shapes, colors, accessories — they should feel like characters~~ ✅
+|- ~~Stats overlay with career tracking — hole-by-hole scorecard, career best/average, birdies/pars/bogeys~~ ✅
+|- ~~More interesting stroke outcomes (bounces off trees with angle deflection, roll on fairway, plugged in sand)~~ ✅
+|- ~~Terrain height editing (raised greens, lowered bunkers)~~ ✅
+|- ~~Round-summary popup + fade-out when golfer returns to clubhouse — satisfaction emoji, score vs par, revenue earned~~ ✅
+|- ~~Sand hazard penalty — bunker landings incur a stroke penalty + frustration reaction~~ ✅
+
+**Next — foundations for course rating system**
+- ✅ Course composition stats display (holes, water/sand count, par, decor count) + 1-5 star rating
+- ✅ Course rating drives green fee multiplier (beyond reputation)
 
 ### Medium-term (mechanics that make it compelling)
 

@@ -340,6 +340,7 @@ export interface Golfer {
   onCourse: boolean;
   waterHits: number;
   treeHits: number;
+  sandHits: number;
   // New personality & skills
   trait: GolferTrait;
   skills: GolferSkill[];

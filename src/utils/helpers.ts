@@ -106,3 +106,79 @@ export function getSkillTier(skill: number): SkillTier {
   if (skill >= 0.4)  return { label: 'Hacker',   emoji: '🎲', color: '#fbbf24', dotColor: 0xfbbf24 };
   return { label: 'Beginner', emoji: '🌱', color: '#a78bfa', dotColor: 0xa78bfa };
 }
+
+// === Course composition stats — used for course rating display ===
+
+export interface CourseStats {
+  holesConfigured: number;
+  totalPar: number;
+  waterTiles: number;
+  sandTiles: number;
+  decorBuildings: number;
+  revenueBuildings: number;
+}
+
+/**
+ * Compute course composition statistics from the current grid and buildings.
+ * Used to display course difficulty, variety, and rating.
+ */
+export function computeCourseStats(
+  grid: { type: string }[][],
+  holes: { tee: unknown; cup: unknown; par: number }[],
+  buildings: { typeKey: string }[],
+): CourseStats {
+  let waterTiles = 0;
+  let sandTiles = 0;
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < (grid[r]?.length ?? 0); c++) {
+      const t = grid[r][c];
+      if (t?.type === 'water') waterTiles++;
+      else if (t?.type === 'sand') sandTiles++;
+    }
+  }
+
+  const holesConfigured = holes.filter((h) => h.tee && h.cup).length;
+  const totalPar = totalCoursePar(holes);
+  const decorBuildings = buildings.filter((b) =>
+    ['bench', 'fountain', 'garden'].includes(b.typeKey),
+  ).length;
+  const revenueBuildings = buildings.filter((b) =>
+    ['clubhouse', 'shop', 'snack_bar'].includes(b.typeKey),
+  ).length;
+
+  return { holesConfigured, totalPar, waterTiles, sandTiles, decorBuildings, revenueBuildings };
+}
+
+/**
+ * Compute a 1-5 star course rating based on variety and hazards.
+ * More variety + appropriate hazards = higher rating.
+ * Returns a float 1.0–5.0.
+ */
+export function computeCourseRating(stats: CourseStats): number {
+  if (stats.holesConfigured === 0) return 1.0;
+
+  let score = 2.0;
+
+  // Holes configured — more is better
+  if (stats.holesConfigured >= 8) score += 1.5;
+  else if (stats.holesConfigured >= 5) score += 1.0;
+  else if (stats.holesConfigured >= 3) score += 0.5;
+
+  // Water hazards add challenge (but too many hurts)
+  if (stats.waterTiles >= 5 && stats.waterTiles <= 20) score += 0.5;
+  else if (stats.waterTiles > 0 && stats.waterTiles < 5) score += 0.3;
+  else if (stats.waterTiles > 20) score += 0.1;
+
+  // Sand hazards
+  if (stats.sandTiles >= 5 && stats.sandTiles <= 15) score += 0.5;
+  else if (stats.sandTiles > 0 && stats.sandTiles < 5) score += 0.3;
+
+  // Decor buildings add beauty
+  if (stats.decorBuildings >= 3) score += 0.5;
+  else if (stats.decorBuildings >= 1) score += 0.3;
+
+  // Par variety (not all par-3s)
+  if (stats.totalPar > stats.holesConfigured * 3) score += 0.3;
+
+  return Math.max(1.0, Math.min(5.0, Math.round(score * 2) / 2));
+}

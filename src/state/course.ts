@@ -1,5 +1,6 @@
 import { createStore } from 'zustand/vanilla';
 import { GRID_COLS, GRID_ROWS, TerrainType, BuildingType } from '../utils/constants';
+import { computeCourseStats, computeCourseRating } from '../utils/helpers';
 
 export interface Tile {
   type: TerrainType;
@@ -93,6 +94,7 @@ export interface CourseState {
   repayLoan: (amount: number) => boolean;
   addReputation: (satisfaction: number) => void;
   getReputationMultiplier: () => number;
+  getCourseRatingMultiplier: () => number;
   addBuilding: (typeKey: string, col: number, row: number) => void;
   removeBuilding: (col: number, row: number) => void;
   setCourseRecord: (strokes: number, date: string, coursePar: number) => void;
@@ -446,6 +448,14 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
     const rep = get().reputation;
     // 1.0 = 0.6x, 2.5 = 1.0x, 5.0 = 1.6x
     return 0.6 + (rep - 1.0) * 0.25;
+  },
+
+  getCourseRatingMultiplier: () => {
+    const state = get();
+    const stats = computeCourseStats(state.grid, state.holes, state.buildings);
+    const rating = computeCourseRating(stats);
+    // 1.0★ = 0.8x, 2.5★ = 1.0x, 5.0★ = 1.6x
+    return 0.8 + (rating - 1.0) * 0.2;
   },
 
   addBuilding: (typeKey, col, row) =>
