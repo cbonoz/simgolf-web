@@ -296,6 +296,10 @@ export function resolveLanding(
     newStrokes += 1;
     newTilePos = { ...previousPos };
     stateTimer = GAME_CONFIG.WATER_REACT_TIME;
+  } else if (tile.type === 'sand') {
+    // Sand hazard: penalty stroke but ball stays in the sand
+    newStrokes += 1;
+    stateTimer = GAME_CONFIG.SAND_REACT_TIME;
   } else if (tile.type === 'trees') {
     newTilePos = { ...previousPos };
     stateTimer = GAME_CONFIG.TREE_REACT_TIME;
@@ -347,7 +351,7 @@ export function determineReaction(
     return 'hole_complete_pickup';
   }
 
-  if (tileType === 'water' || tileType === 'trees') return 'frustration';
+  if (tileType === 'water' || tileType === 'sand' || tileType === 'trees') return 'frustration';
   if (newStrokes >= MAX_STROKES_PER_HOLE - 1) return 'frustration';
 
   if (newStrokes + 1 <= par - 1) return 'celebration';

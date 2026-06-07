@@ -16,6 +16,8 @@ export const GAME_CONFIG = {
   BALL_LAND_REACT_TIME: 1200,
   /** Pause after ball lands in water */
   WATER_REACT_TIME: 1800,
+  /** Pause after ball lands in sand */
+  SAND_REACT_TIME: 1600,
   /** Pause after ball hits trees */
   TREE_REACT_TIME: 1500,
   /** Celebration pause after holing out */
