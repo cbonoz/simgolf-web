@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { TILE_WIDTH, TILE_HEIGHT, TERRAIN_COLORS, TerrainType, TERRAIN_TYPES, VEGETATION_TYPES, BUILDING_TYPES } from '../utils/constants';
+import { TILE_WIDTH, TILE_HEIGHT, TERRAIN_COLORS, TerrainType, TERRAIN_TYPES, VEGETATION_TYPES, BUILDING_TYPES, DECOR_TYPES } from '../utils/constants';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -405,6 +405,9 @@ export class BootScene extends Phaser.Scene {
     particleG.generateTexture('particle', 6, 6);
     particleG.destroy();
 
+    // Decor item textures (procedural isometric sprites for non-building decorations)
+    this.generateDecorTextures();
+
     // Player ball (for challenge mode) — brighter orange/red
     const playerBallG = this.add.graphics();
     playerBallG.fillStyle(0xff6600, 1);
@@ -618,6 +621,167 @@ export class BootScene extends Phaser.Scene {
       g.fillPath();
 
       g.generateTexture(`building_${bld.key}`, w, h + 8);
+      g.destroy();
+    }
+  }
+
+  private generateDecorTextures(): void {
+    for (const decor of DECOR_TYPES) {
+      const g = this.add.graphics();
+      const w = 18;
+      const h = 16;
+
+      // Each decor type gets a distinct procedural look
+      switch (decor.key) {
+        case 'flowers_red':
+          // Red flower cluster — 3 small circles
+          g.fillStyle(0xe74c3c, 1);
+          g.fillCircle(7, 10, 3);
+          g.fillCircle(11, 8, 2.5);
+          g.fillCircle(9, 12, 2);
+          g.fillStyle(0x2ecc71, 0.8);
+          g.fillRect(7, 12, 2, 4);
+          break;
+        case 'flowers_yellow':
+          g.fillStyle(0xf1c40f, 1);
+          g.fillCircle(7, 10, 3);
+          g.fillCircle(11, 8, 2.5);
+          g.fillCircle(9, 12, 2);
+          g.fillStyle(0x2ecc71, 0.8);
+          g.fillRect(7, 12, 2, 4);
+          break;
+        case 'flowers_purple':
+          g.fillStyle(0x9b59b6, 1);
+          g.fillCircle(7, 10, 3);
+          g.fillCircle(11, 8, 2.5);
+          g.fillCircle(9, 12, 2);
+          g.fillStyle(0x2ecc71, 0.8);
+          g.fillRect(7, 12, 2, 4);
+          break;
+        case 'flowers_mixed':
+          g.fillStyle(0xe74c3c, 1);
+          g.fillCircle(6, 10, 2.5);
+          g.fillStyle(0xf1c40f, 1);
+          g.fillCircle(10, 8, 2.5);
+          g.fillStyle(0x9b59b6, 1);
+          g.fillCircle(8, 12, 2);
+          g.fillStyle(0x2ecc71, 0.8);
+          g.fillRect(7, 11, 2, 5);
+          break;
+        case 'rock_small':
+          g.fillStyle(0x888888, 1);
+          g.beginPath();
+          g.moveTo(5, 14);
+          g.lineTo(13, 14);
+          g.lineTo(14, 8);
+          g.lineTo(10, 5);
+          g.lineTo(4, 8);
+          g.closePath();
+          g.fillPath();
+          g.fillStyle(0xaaaaaa, 0.5);
+          g.fillCircle(8, 9, 3); // highlight
+          break;
+        case 'rock_large':
+          g.fillStyle(0x777777, 1);
+          g.beginPath();
+          g.moveTo(2, 14);
+          g.lineTo(16, 14);
+          g.lineTo(17, 7);
+          g.lineTo(12, 3);
+          g.lineTo(5, 5);
+          g.lineTo(1, 10);
+          g.closePath();
+          g.fillPath();
+          g.fillStyle(0x999999, 0.4);
+          g.fillCircle(8, 8, 4);
+          break;
+        case 'rock_moss':
+          g.fillStyle(0x666666, 1);
+          g.beginPath();
+          g.moveTo(4, 14);
+          g.lineTo(14, 14);
+          g.lineTo(15, 9);
+          g.lineTo(11, 6);
+          g.lineTo(5, 7);
+          g.closePath();
+          g.fillPath();
+          g.fillStyle(0x5a8f4a, 0.7);
+          g.fillCircle(6, 9, 3);
+          g.fillCircle(10, 7, 2);
+          break;
+        case 'sign_wooden':
+          g.fillStyle(0x8B5A2B, 1);
+          g.fillRect(7, 5, 4, 11); // post
+          g.fillRect(2, 3, 14, 6); // board
+          g.fillStyle(0x6B3A1B, 0.6);
+          g.fillRect(3, 4, 12, 4);
+          break;
+        case 'sign_stone':
+          g.fillStyle(0x999999, 1);
+          g.fillRect(7, 6, 4, 10); // post
+          g.fillRect(1, 3, 16, 7); // stone slab
+          g.fillStyle(0xbbbbbb, 0.5);
+          g.fillRect(2, 4, 14, 5);
+          break;
+        case 'bench_decor':
+          g.fillStyle(0x8B5A2B, 1);
+          g.fillRect(2, 11, 4, 3);  // left leg
+          g.fillRect(12, 11, 4, 3);  // right leg
+          g.fillRect(1, 7, 16, 4);   // seat
+          g.fillStyle(0x6B3A1B, 0.6);
+          g.fillRect(2, 8, 14, 2);   // seat detail
+          g.fillStyle(0x998866, 0.8);
+          g.fillRect(4, 3, 10, 4);   // backrest
+          break;
+        case 'mushroom_red':
+          g.fillStyle(0xffffff, 0.9);
+          g.fillRect(7, 8, 4, 7);   // stem
+          g.fillStyle(0xe74c3c, 1);
+          g.beginPath();
+          g.arc(9, 8, 6, Math.PI, 0, false);
+          g.closePath();
+          g.fillPath();
+          g.fillStyle(0xffffff, 0.6);
+          g.fillCircle(7, 6, 1.5);
+          g.fillCircle(11, 5, 1);
+          break;
+        case 'mushroom_brown':
+          g.fillStyle(0xf5deb3, 0.9);
+          g.fillRect(7, 9, 4, 6);   // stem
+          g.fillStyle(0x8B5A2B, 1);
+          g.beginPath();
+          g.arc(9, 9, 5.5, Math.PI, 0, false);
+          g.closePath();
+          g.fillPath();
+          g.fillStyle(0x6B4A1B, 0.5);
+          g.fillCircle(7, 7, 1.5);
+          g.fillCircle(11, 6, 1);
+          break;
+        case 'stump':
+          g.fillStyle(0x6B4A1B, 1);
+          g.fillRoundedRect(4, 5, 10, 10, 2);
+          g.fillStyle(0x8B6A3B, 1);
+          g.fillEllipse(9, 5, 12, 5); // top cross section
+          g.fillStyle(0x5a3a1b, 0.6);
+          g.fillRect(4, 10, 10, 1);   // ring line
+          g.fillStyle(0x4a6b3a, 0.4);
+          g.fillCircle(8, 5, 1);      // sprout
+          break;
+        case 'lantern':
+          g.fillStyle(0x666666, 1);
+          g.fillRect(8, 2, 2, 12);   // pole
+          g.fillStyle(0xf1c40f, 0.9);
+          g.fillRoundedRect(5, 4, 8, 7, 2); // glass
+          g.fillStyle(0xff9900, 0.5);
+          g.fillCircle(9, 7, 3);     // glow
+          g.lineStyle(1, 0x444444, 0.8);
+          g.strokeRoundedRect(5, 4, 8, 7, 2);
+          g.fillStyle(0x888888, 1);
+          g.fillRect(6, 3, 6, 2);    // top cap
+          break;
+      }
+
+      g.generateTexture(decor.key, w, h);
       g.destroy();
     }
   }

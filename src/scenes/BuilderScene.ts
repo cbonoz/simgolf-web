@@ -1,7 +1,7 @@
 import * as Phaser from 'phaser';
 import { courseStore, Tile, HoleConfig, PlacedBuilding, getClubhousePosition, getDayPhase } from '../state/course';
 import { golferStore, Golfer, generateThought } from '../state/golfers';
-import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType } from '../utils/constants';
+import { GRID_COLS, GRID_ROWS, TILE_WIDTH, TILE_HEIGHT, TerrainType, TERRAIN_TYPES, TERRAIN_COST, VEGETATION_TYPES, MAX_STROKES_PER_HOLE, BUILDING_TYPES, BuildingType, DECOR_TYPES } from '../utils/constants';
 import { GAME_CONFIG } from '../utils/gameConfig';
 import { tileToScreen, screenToTile, clampTile, calculatePar, totalCoursePar, countConfiguredHoles, formatVsPar, vsParColor, getSkillTier } from '../utils/helpers';
 import { Ball } from '../entities/Ball';
@@ -57,7 +57,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   private challengeTileInfoEl: HTMLDivElement | null = null;
   private challengeScorecardEl: HTMLDivElement | null = null;
   private playerWalkTarget: { col: number; row: number } | null = null;
-  private builderMode: 'paint' | 'hole' | 'height' | 'buildings' | 'none' = 'paint';
+  private builderMode: 'paint' | 'hole' | 'height' | 'buildings' | 'decor' | 'none' = 'paint';
   private selectedHoleId: number = 1;
   private teeSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private flagSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
@@ -74,7 +74,10 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
   private holeControlsContainer!: HTMLDivElement;
   private heightControlsContainer!: HTMLDivElement;
   private buildingControlsContainer!: HTMLDivElement;
+  private decorControlsContainer!: HTMLDivElement;
   private selectedBuildingType: string | null = null;
+  private selectedDecor: string = DECOR_TYPES[0].key;
+  private decorOverlaySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
 
   // Golfers (unified build+play)
   private golferSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
@@ -724,6 +727,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       this.helpText.textContent = 'Left-click: Raise/Lower tile | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo | Esc: Resume';
     } else if (this.builderMode === 'buildings') {
       this.helpText.textContent = 'Left-click: Place building | Click golfer/building: Inspect | Scroll: Zoom | Right-drag: Pan';
+    } else if (this.builderMode === 'decor') {
+      this.helpText.textContent = 'Left-click: Place decor | Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo';
     } else {
       this.helpText.textContent = 'Click golfer: Inspect | Scroll: Zoom | Right-drag: Pan | Ctrl+Z: Undo | Esc: Resume';
     }
@@ -750,6 +755,10 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
 
         if (tile.vegetation) {
           this.addVegetationOverlay(col, row, pos, tile.vegetation);
+        }
+
+        if (tile.decor) {
+          this.addDecorOverlay(col, row, pos, tile.decor);
         }
 
         // Cache water tile positions for shimmer animation
@@ -851,6 +860,31 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
         cs.destroy();
       }
       this.treeClusterSprites.delete(key);
+    }
+  }
+
+  private addDecorOverlay(
+    col: number,
+    row: number,
+    pos: { x: number; y: number },
+    decorKey: string
+  ): void {
+    const key = `${col},${row}`;
+    if (this.decorOverlaySprites.has(key)) return;
+
+    const decor = this.add.sprite(pos.x, pos.y - 6, decorKey);
+    decor.setOrigin(0.5, 1);
+    decor.setScale(0.55);
+    decor.setDepth((col + row) * GRID_COLS + col + 0.55);
+    this.decorOverlaySprites.set(key, decor);
+  }
+
+  private removeDecorOverlay(col: number, row: number): void {
+    const key = `${col},${row}`;
+    const sprite = this.decorOverlaySprites.get(key);
+    if (sprite) {
+      sprite.destroy();
+      this.decorOverlaySprites.delete(key);
     }
   }
 
@@ -1014,6 +1048,11 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
           this.addVegetationOverlay(col, row, pos, tile.vegetation);
         } else {
           this.removeVegetationOverlay(col, row);
+        }
+        if (tile.decor) {
+          this.addDecorOverlay(col, row, pos, tile.decor);
+        } else {
+          this.removeDecorOverlay(col, row);
         }
       }
     }
@@ -1280,6 +1319,8 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       this.paintHeightTile(col, row);
     } else if (this.builderMode === 'buildings') {
       this.placeBuildingAt(col, row);
+    } else if (this.builderMode === 'decor') {
+      this.placeDecorAt(col, row);
     } else {
       this.placeHoleElement(col, row);
     }
@@ -1329,11 +1370,47 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.updateMoneyDisplay();
   }
 
+  private placeDecorAt(col: number, row: number): void {
+    if (!this.selectedDecor) return;
+    const dt = DECOR_TYPES.find((d) => d.key === this.selectedDecor);
+    if (!dt) return;
+
+    const store = courseStore.getState();
+    const tile = store.grid[row][col];
+
+    // Cannot place decor on tees, cups, water, or where decor already exists
+    if (tile.isTee || tile.isCup || tile.type === 'water') {
+      this.showTemporaryMessage("Can't place decor here.");
+      return;
+    }
+    // Cannot place over buildings
+    if (store.buildings.some((b) => b.col === col && b.row === row)) {
+      this.showTemporaryMessage('Tile occupied by a building.');
+      return;
+    }
+
+    if (!store.spendMoney(dt.cost, 'decor')) {
+      this.showTemporaryMessage(`Not enough money! Need $${dt.cost}.`);
+      return;
+    }
+    store.setDecor(col, row, dt.key);
+    this.refreshGrid();
+    this.updateMoneyDisplay();
+  }
+
   private updateBuildingSelection(): void {
     const btns = this.buildingControlsContainer.querySelectorAll('button');
     for (const btn of btns) {
       const key = (btn as HTMLButtonElement).dataset.building;
       (btn as HTMLButtonElement).style.background = key === this.selectedBuildingType ? '#4a8f3f' : '#444';
+    }
+  }
+
+  private updateDecorSelection(): void {
+    const btns = this.decorControlsContainer.querySelectorAll('button');
+    for (const btn of btns) {
+      const key = (btn as HTMLButtonElement).dataset.decor;
+      (btn as HTMLButtonElement).style.background = key === this.selectedDecor ? '#7a4f8f' : '#444';
     }
   }
 
@@ -1612,7 +1689,10 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     const bldBtn = document.createElement('button');
     bldBtn.textContent = '🏪 Bld';
     bldBtn.title = 'Place buildings';
-    this.modeButtons = [paintBtn, holeBtn, heightBtn, bldBtn, noneBtn];
+    const decorBtn = document.createElement('button');
+    decorBtn.textContent = '🌸 Dec';
+    decorBtn.title = 'Place decor items';
+    this.modeButtons = [paintBtn, holeBtn, heightBtn, bldBtn, decorBtn, noneBtn];
 
     for (const btn of this.modeButtons) {
       btn.style.cssText = `
@@ -1648,6 +1728,13 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     bldBtn.addEventListener('click', () => {
       this.builderMode = 'buildings';
       this.selectedBuildingType = BUILDING_TYPES[0].key;
+      this.updateModeButtons();
+      this.updateUIVisibility();
+    });
+
+    decorBtn.addEventListener('click', () => {
+      this.builderMode = 'decor';
+      this.selectedDecor = DECOR_TYPES[0].key;
       this.updateModeButtons();
       this.updateUIVisibility();
     });
@@ -1776,6 +1863,40 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.buildingControlsContainer.appendChild(bldInfo);
 
     this.terrainPalette.appendChild(this.buildingControlsContainer);
+
+    // Decor controls container
+    this.decorControlsContainer = document.createElement('div');
+    this.decorControlsContainer.style.cssText = 'display: none; flex-direction: column; gap: 6px;';
+
+    const decorLabel = document.createElement('div');
+    decorLabel.textContent = 'Select Decor:';
+    decorLabel.style.cssText = 'color: #aaa; font-size: 12px;';
+    this.decorControlsContainer.appendChild(decorLabel);
+
+    for (const dt of DECOR_TYPES) {
+      const btn = document.createElement('button');
+      btn.textContent = `${dt.name} ($${dt.cost})`;
+      btn.dataset.decor = dt.key;
+      btn.dataset.cost = String(dt.cost);
+      btn.style.cssText = `
+        padding: 6px 12px; border: 2px solid transparent; border-radius: 4px;
+        cursor: pointer; font-size: 12px; text-transform: capitalize;
+        background: ${dt.key === this.selectedDecor ? '#7a4f8f' : '#444'};
+        color: #fff; text-align: left;
+      `;
+      btn.addEventListener('click', () => {
+        this.selectedDecor = dt.key;
+        this.updateDecorSelection();
+      });
+      this.decorControlsContainer.appendChild(btn);
+    }
+
+    const decorInfo = document.createElement('div');
+    decorInfo.style.cssText = 'color: #888; font-size: 10px; line-height: 1.3;';
+    decorInfo.textContent = 'Click a decor type, then click a tile to place it. Cannot place over tees/cups or existing decor.';
+    this.decorControlsContainer.appendChild(decorInfo);
+
+    this.terrainPalette.appendChild(this.decorControlsContainer);
 
     // Hole controls container
     this.holeControlsContainer = document.createElement('div');
@@ -1909,8 +2030,10 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     this.modeButtons[2].style.borderColor = this.builderMode === 'height' ? '#e0b06b' : 'transparent';
     this.modeButtons[3].style.background = this.builderMode === 'buildings' ? '#3f6f8f' : '#444';
     this.modeButtons[3].style.borderColor = this.builderMode === 'buildings' ? '#6bb0e0' : 'transparent';
-    this.modeButtons[4].style.background = this.builderMode === 'none' ? '#8f3f3f' : '#444';
-    this.modeButtons[4].style.borderColor = this.builderMode === 'none' ? '#e06b6b' : 'transparent';
+    this.modeButtons[4].style.background = this.builderMode === 'decor' ? '#7a4f8f' : '#444';
+    this.modeButtons[4].style.borderColor = this.builderMode === 'decor' ? '#b07ad0' : 'transparent';
+    this.modeButtons[5].style.background = this.builderMode === 'none' ? '#8f3f3f' : '#444';
+    this.modeButtons[5].style.borderColor = this.builderMode === 'none' ? '#e06b6b' : 'transparent';
   }
 
   private updateUIVisibility(): void {
@@ -1938,6 +2061,14 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       this.holeControlsContainer.style.display = 'none';
       this.heightControlsContainer.style.display = 'none';
       this.buildingControlsContainer.style.display = 'flex';
+      this.decorControlsContainer.style.display = 'none';
+    } else if (this.builderMode === 'decor') {
+      this.terrainPalette.style.display = 'flex';
+      this.terrainButtonsContainer.style.display = 'none';
+      this.holeControlsContainer.style.display = 'none';
+      this.heightControlsContainer.style.display = 'none';
+      this.buildingControlsContainer.style.display = 'none';
+      this.decorControlsContainer.style.display = 'flex';
     } else {
       // Deselected — keep palette visible but show no tool content
       this.terrainPalette.style.display = 'flex';
@@ -1945,6 +2076,7 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
       this.holeControlsContainer.style.display = 'none';
       this.heightControlsContainer.style.display = 'none';
       this.buildingControlsContainer.style.display = 'none';
+      this.decorControlsContainer.style.display = 'none';
     }
     this.updateHelpText();
   }

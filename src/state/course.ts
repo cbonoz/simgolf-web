@@ -222,6 +222,13 @@ export const courseStore = createStore<CourseState>()((set, get) => ({
       return { grid };
     }),
 
+  setDecor: (col, row, decor) =>
+    set((state) => {
+      const grid = state.grid.map((r) => [...r]);
+      grid[row][col] = { ...grid[row][col], decor };
+      return { grid };
+    }),
+
   setTee: (holeId, col, row) =>
     set((state) => {
       const holes = state.holes.map((h) =>
