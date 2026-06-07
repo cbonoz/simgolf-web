@@ -2823,17 +2823,10 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     // Use the pure landing resolution from GolferAI
     const resolution = resolveLanding(landingCol, landingRow, previousPos, golfer, store.grid, cupPos || undefined);
 
-    // Track water/tree hits for reputation
+    // Track water hits for reputation (tree hits are already counted in executeSwing
+    // to avoid double-counting when tree deflection fallback lands on the tree tile)
     if (tile.type === 'water') {
-      const g = gStore.golfers.find((gg) => gg.id === golferId);
-      if (g) {
-        gStore.updateGolfer(golferId, { waterHits: g.waterHits + 1 });
-      }
-    } else if (tile.type === 'trees') {
-      const g = gStore.golfers.find((gg) => gg.id === golferId);
-      if (g) {
-        gStore.updateGolfer(golferId, { treeHits: g.treeHits + 1 });
-      }
+      gStore.updateGolfer(golferId, { waterHits: golfer.waterHits + 1 });
     }
 
     // Play hole-out SFX if applicable
