@@ -206,6 +206,7 @@ export class ChallengeMode {
     this.playerStrokes++;
     this.playerState = 'addressing';
     this.updateScorecardUI();
+    this.host.onPlayerMoved(this.playerCol, this.playerRow);
     this.host.onFollowPlayer(this.playerCol, this.playerRow);
     return {};
   }

@@ -428,14 +428,39 @@ export class BuilderScene extends Phaser.Scene implements ChallengeHost, DayCycl
     const sprite = this.createGolferSprite(opponent, pos.x, pos.y - 4);
     sprite.setScale(1.0);
     this.golferSprites.set(opponent.id, sprite);
+    // Add opponent name label above sprite
+    const nameLabel = this.add.text(pos.x, pos.y - 18, opponent.name, {
+      fontSize: '10px',
+      color: '#64b5f6',
+      fontFamily: 'sans-serif',
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      padding: { x: 3, y: 1 },
+    }).setOrigin(0.5, 0.5).setDepth(9998);
+    (sprite as any)._opponentLabel = nameLabel;
+    // Add enemy indicator ring around opponent (pulsing blue ring)
+    const ring = this.add.graphics();
+    ring.lineStyle(2, 0x64b5f6, 0.6);
+    ring.strokeCircle(0, 0, 8);
+    ring.setPosition(pos.x, pos.y - 8);
+    ring.setDepth(9996);
+    this.tweens.add({
+      targets: ring,
+      alpha: { from: 0.4, to: 0.8 },
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+    });
+    (sprite as any)._opponentRing = ring;
   }
 
   // ChallengeHost: remove opponent sprite
   onOpponentRemoved(opponentId: number): void {
     const sprite = this.golferSprites.get(opponentId);
     if (sprite) {
-      const dot = (sprite as any)._tierDot;
-      if (dot) dot.destroy();
+      const label = (sprite as any)._opponentLabel;
+      if (label) label.destroy();
+      const ring = (sprite as any)._opponentRing;
+      if (ring) ring.destroy();
       sprite.destroy();
       this.golferSprites.delete(opponentId);
     }
